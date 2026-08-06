@@ -104,7 +104,7 @@ O bloqueio responde `201 Created` com o identificador, a lista de assentos efeti
 
 > **Obrigatório em todos os projetos**
 >
-> A autenticação faz parte da ementa (Tópico 3, aulas 15–18) e deve usar **BetterAuth** com adapter Prisma — não implementar JWT artesanal.
+> A autenticação faz parte da ementa (Tópico 3 da ementa) e deve usar **BetterAuth** com adapter Prisma — não implementar JWT artesanal.
 
 ### 5.1 Dois planos de autenticação
 
@@ -131,7 +131,7 @@ Este serviço é consumido por **outros sistemas** — o site de venda de ingres
 >
 Em arquitetura de microserviços o usual é JWT, porque cada serviço valida o token pela assinatura sem precisar tocar no banco. O custo desse desenho é que um token válido continua valendo até expirar, e revogar antes disso exige manter uma lista de bloqueio compartilhada.
 
-Como aqui os três serviços já compartilham o mesmo banco, a sessão persistida sai mais barata e ainda entrega revogação imediata. É exatamente o *trade-off* discutido na aula 15, e a decisão deve estar justificada no README.
+Como aqui os três serviços já compartilham o mesmo banco, a sessão persistida sai mais barata e ainda entrega revogação imediata. É exatamente o *trade-off* discutido em aula, e a decisão deve estar justificada no README.
 
 ### 5.3 Chaves de API
 
@@ -402,17 +402,17 @@ Definida pela ementa da disciplina. Desvios precisam de autorização prévia do
 
 ## 11. Marcos de entrega
 
-Alinhados ao Plano de Curso. Cada marco é verificado na aula correspondente.
+Alinhados ao Plano de Curso. Cada marco é verificado ao final do tópico correspondente.
 
-| Aula | Marco | O que deve estar funcionando |
+| Etapa | Marco | O que deve estar funcionando |
 |---|---|---|
-| **14** | MS-A — REST + Open-API | Locais, mapas, sessões e assentos persistidos; bloqueio e confirmação funcionando, especificação Open-API completa e Swagger UI navegável |
-| **18** | Autenticação | BetterAuth funcionando, papéis comprador e promotor, isolamento por cliente demonstrável |
-| **24** | MS-B — GraphQL | Disponibilidade, ocupação por setor e relatório de vendas com filtros e paginação por cursor |
-| **28** | MS-B — Webhooks | Disparo assinado, tentativas de entrega e reenvio manual, histórico e endpoint receptor de demonstração |
-| **32** | MS-C — WebSocket | Mapa ao vivo com autorização por canal, cronômetro de bloqueio e cliente de demonstração |
-| **35** | Integração | Os três serviços operando juntos, teste de rajada simultânea e documentação final |
-| **40** | Apresentação | Demonstração funcional ponta a ponta, incluindo disputa real pelo mesmo assento |
+| **1** | MS-A — REST + Open-API | Locais, mapas, sessões e assentos persistidos; bloqueio e confirmação funcionando, especificação Open-API completa e Swagger UI navegável |
+| **2** | Autenticação | BetterAuth funcionando, papéis comprador e promotor, isolamento por cliente demonstrável |
+| **3** | MS-B — GraphQL | Disponibilidade, ocupação por setor e relatório de vendas com filtros e paginação por cursor |
+| **4** | MS-B — Webhooks | Disparo assinado, tentativas de entrega e reenvio manual, histórico e endpoint receptor de demonstração |
+| **5** | MS-C — WebSocket | Mapa ao vivo com autorização por canal, cronômetro de bloqueio e cliente de demonstração |
+| **6** | Integração | Os três serviços operando juntos, teste de rajada simultânea e documentação final |
+| **7** | Apresentação | Demonstração funcional ponta a ponta, incluindo disputa real pelo mesmo assento |
 
 ## 12. Critérios de avaliação
 
