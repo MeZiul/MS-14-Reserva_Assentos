@@ -1,32 +1,44 @@
 {
   "name": "ms-a-rest",
   "version": "1.0.0",
-  "private": true,
+  "description": "Microserviço **MS-A** do projeto **WS-14 — API de Reserva de Assentos**.\r Web Services · 4º semestre · CST em Análise e Desenvolvimento de Sistemas · IFRO Campus Vilhena · 2026/2.",
+  "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "dev": "tsx watch server.ts",
+    "start": "tsx server.ts",
+    "build": "tsc",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
-    "seed": "tsx src/infra/prisma/seed.ts"
+    "prisma:studio": "prisma studio"
   },
+  "repository": {
+    "type": "git",
+    "url": "ssh://git@gitlab.fslab.dev:6666/webservice-2026/ws-14-reserva-assentos/ms-a-rest.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "better-auth": "^1.2.8",
-    "dotenv": "^16.5.0",
-    "express": "^4.21.2",
-    "openapi-types": "^12.0.0",
-    "prisma": "^5.10.0",
-    "swagger-ui-express": "^5.0.0",
-    "zod": "^3.23.8"
+    "@better-auth/prisma-adapter": "^1.7.2",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "better-auth": "^1.7.2",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.23.0",
+    "swagger-ui-express": "^5.0.1",
+    "yaml": "^2.9.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@prisma/client": "^5.10.0",
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.10.2",
-    "@types/swagger-ui-express": "^5.0.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.4.1",
+    "@types/pg": "^8.23.1",
+    "@types/swagger-ui-express": "^4.1.8",
+    "nodemon": "^3.1.14",
+    "prisma": "^7.10.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
   }
 }

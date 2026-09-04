@@ -3,3 +3,6 @@ dist/
 .env
 .prisma/
 *.log
+
+/src/generated/prisma
+skills-lock.json
