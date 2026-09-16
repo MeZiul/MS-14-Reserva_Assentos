@@ -1,0 +1,280 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+    provider = "prisma-client"
+    output   = "../generated/prisma"
+}
+
+datasource db {
+    provider = "postgresql"
+}
+
+// ──────────────────────────────────────────────
+// Autenticação (BetterAuth) 
+// ──────────────────────────────────────────────
+enum Papel {
+    COMPRADOR
+    PROMOTOR
+}
+
+model Usuario {
+    id              String   @id @default(uuid()) @db.Uuid
+    nome            String
+    email           String   @unique
+    emailVerificado Boolean  @default(false)
+    imagem          String?
+    papel           Papel    @default(COMPRADOR)
+    criadoEm        DateTime @default(now())
+    atualizadoEm    DateTime @updatedAt
+
+    sessoesAuth Sessao_Autenticacao[]
+    conta       Conta?
+    locais      Local[]
+    bloqueios   Bloqueio[]
+    reservas    Reserva[]
+
+    @@map("usuarios")
+}
+
+// nome distinto de "Sessao" (que já é a sessão de cinema/show)
+// para não colidir com o domínio do negócio
+model Sessao_Autenticacao {
+    id           String   @id @default(uuid()) @db.Uuid
+    usuarioId    String   @db.Uuid
+    token        String   @unique
+    expiraEm     DateTime
+    enderecoIp   String?
+    userAgent    String?
+    criadoEm     DateTime @default(now())
+    atualizadoEm DateTime @updatedAt
+
+    usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+    @@map("sessoes_autenticacao")
+}
+
+model Conta {
+    id                       String    @id @default(uuid()) @db.Uuid
+    usuarioId                String    @unique @db.Uuid
+    idNaConta                String
+    provedorId               String
+    tokenAcesso              String?
+    tokenAtualizacao         String?
+    tokenAcessoExpiraEm      DateTime?
+    tokenAtualizacaoExpiraEm DateTime?
+    senha                    String?
+    criadoEm                 DateTime  @default(now())
+    atualizadoEm             DateTime  @updatedAt
+
+    usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+    @@map("contas")
+}
+
+model Verificacao {
+    id            String   @id @default(uuid()) @db.Uuid
+    identificador String
+    valor         String
+    expiraEm      DateTime
+    criadoEm      DateTime @default(now())
+
+    @@map("verificacoes")
+}
+
+// ──────────────────────────────────────────────
+// Locais, mapas, sessões
+// ──────────────────────────────────────────────
+model Local {
+    id       String   @id @default(uuid()) @db.Uuid
+    nome     String
+    endereco String?
+    donoId   String   @db.Uuid
+    criadoEm DateTime @default(now())
+
+    dono  Usuario @relation(fields: [donoId], references: [id])
+    mapas Mapa[]
+
+    @@index([donoId])
+    @@map("locais")
+}
+
+model Mapa {
+    id              String   @id @default(uuid()) @db.Uuid
+    localId         String   @db.Uuid
+    nome            String
+    capacidadeTotal Int
+    versaoLayout    Int      @default(1)
+    criadoEm        DateTime @default(now())
+
+    local   Local    @relation(fields: [localId], references: [id])
+    setores Setor[]
+    sessoes Sessao[]
+
+    @@index([localId])
+    @@map("mapas")
+}
+
+model Setor {
+    id            String  @id @default(uuid()) @db.Uuid
+    mapaId        String  @db.Uuid
+    nome          String
+    ordemExibicao Int
+    categoria     String?
+
+    mapa     Mapa         @relation(fields: [mapaId], references: [id])
+    assentos Assento[]
+    faixas   FaixaPreco[]
+
+    @@index([mapaId])
+    @@map("setores")
+}
+
+enum AtributoAssento {
+    PADRAO
+    CADEIRANTE
+    ACOMPANHANTE
+    VISAO_OBSTRUIDA
+    CAMAROTE
+}
+
+model Assento {
+    id             String          @id @default(uuid()) @db.Uuid
+    setorId        String          @db.Uuid
+    fileira        String
+    numero         Int
+    x              Float
+    y              Float
+    atributo       AtributoAssento @default(PADRAO)
+    ordemNaFileira Int // usada para calcular blocos contíguos
+
+    setor   Setor           @relation(fields: [setorId], references: [id])
+    estados AssentoSessao[]
+
+    // não pode existir dois assentos iguais (fileira+número) no mesmo setor
+    @@unique([setorId, fileira, numero])
+    @@index([setorId, fileira, ordemNaFileira])
+    @@map("assentos")
+}
+
+enum SituacaoSessao {
+    AGENDADA
+    VENDAS_ABERTAS
+    ESGOTADA
+    REALIZADA
+    CANCELADA
+}
+
+model Sessao {
+    id                    String         @id @default(uuid()) @db.Uuid
+    mapaId                String         @db.Uuid
+    inicioEm              DateTime
+    situacao              SituacaoSessao @default(AGENDADA)
+    prazoBloqueioSegundos Int            @default(600)
+    maxProrrogacoes       Int            @default(2)
+    versao                Int            @default(0) // versão "lógica" p/ WebSocket
+    esgotadaEm            DateTime?
+    criadoEm              DateTime       @default(now())
+
+    mapa      Mapa            @relation(fields: [mapaId], references: [id])
+    faixas    FaixaPreco[]
+    assentos  AssentoSessao[]
+    bloqueios Bloqueio[]
+
+    @@index([mapaId, situacao])
+    @@map("sessoes")
+}
+
+model FaixaPreco {
+    id          String    @id @default(uuid()) @db.Uuid
+    sessaoId    String    @db.Uuid
+    setorId     String    @db.Uuid
+    valor       Decimal   @db.Decimal(10, 2)
+    meiaEntrada Decimal?  @db.Decimal(10, 2)
+    vigenteDe   DateTime  @default(now())
+    vigenteAte  DateTime?
+
+    sessao Sessao @relation(fields: [sessaoId], references: [id])
+    setor  Setor  @relation(fields: [setorId], references: [id])
+
+    @@unique([sessaoId, setorId])
+    @@map("faixas_preco")
+}
+
+// ──────────────────────────────────────────────
+// Estado do assento sob concorrência
+// ──────────────────────────────────────────────
+enum EstadoAssento {
+    LIVRE
+    BLOQUEADO
+    VENDIDO
+}
+
+model AssentoSessao {
+    id              String        @id @default(uuid()) @db.Uuid
+    sessaoId        String        @db.Uuid
+    assentoId       String        @db.Uuid
+    estado          EstadoAssento @default(LIVRE)
+    bloqueioAtualId String?       @unique @db.Uuid
+    reservaAtualId  String?       @unique @db.Uuid
+    versao          Int           @default(0) // lock otimista
+    atualizadoEm    DateTime      @updatedAt
+
+    sessao        Sessao    @relation(fields: [sessaoId], references: [id])
+    assento       Assento   @relation(fields: [assentoId], references: [id])
+    bloqueioAtual Bloqueio? @relation("BloqueioAtual", fields: [bloqueioAtualId], references: [id])
+    reservaAtual  Reserva?  @relation("ReservaAtual", fields: [reservaAtualId], references: [id])
+
+    // 1 linha de estado por assento por sessão — a integridade
+    // exigida na seção 8.1 do RFP, não só no código
+    @@unique([sessaoId, assentoId])
+    @@index([sessaoId, estado])
+    @@map("assentos_sessao")
+}
+
+enum SituacaoBloqueio {
+    ATIVO
+    CONFIRMADO
+    EXPIRADO
+    LIBERADO
+}
+
+model Bloqueio {
+    id                String           @id @default(uuid()) @db.Uuid
+    sessaoId          String           @db.Uuid
+    compradorId       String           @db.Uuid
+    chaveIdempotencia String?          @unique
+    criadoEm          DateTime         @default(now())
+    expiraEm          DateTime
+    prorrogacoes      Int              @default(0)
+    situacao          SituacaoBloqueio @default(ATIVO)
+
+    sessao         Sessao          @relation(fields: [sessaoId], references: [id])
+    comprador      Usuario         @relation(fields: [compradorId], references: [id])
+    assentosAtuais AssentoSessao[] @relation("BloqueioAtual")
+    reserva        Reserva?
+
+    @@index([sessaoId, situacao])
+    @@index([compradorId, situacao])
+    @@index([expiraEm]) // usado na consulta de expiração
+    @@map("bloqueios")
+}
+
+model Reserva {
+    id                  String    @id @default(uuid()) @db.Uuid
+    bloqueioOrigemId    String    @unique @db.Uuid
+    compradorId         String    @db.Uuid
+    valorTotal          Decimal   @db.Decimal(10, 2)
+    referenciaPagamento String
+    confirmadaEm        DateTime  @default(now())
+    canceladaEm         DateTime?
+
+    bloqueioOrigem Bloqueio        @relation(fields: [bloqueioOrigemId], references: [id])
+    comprador      Usuario         @relation(fields: [compradorId], references: [id])
+    assentosAtuais AssentoSessao[] @relation("ReservaAtual")
+
+    @@index([compradorId])
+    @@map("reservas")
+}
