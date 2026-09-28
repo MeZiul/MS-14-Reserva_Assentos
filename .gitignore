@@ -4,7 +4,7 @@ dist/
 .prisma/
 *.log
 
-/src/generated/prisma
+/generated/prisma
 skills-lock.json
 /generated/prisma
 

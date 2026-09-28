@@ -1,1 +1,1 @@
-export {};
+export { sessoesRoutes } from "./sessoes.routes.js";
