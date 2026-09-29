@@ -1,0 +1,1 @@
+export {listar} from "./sessoes.service.js";

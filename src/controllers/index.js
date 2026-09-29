@@ -1,0 +1,1 @@
+export { listarSessoes } from "./sessoes.controller.js";

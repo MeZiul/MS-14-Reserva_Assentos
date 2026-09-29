@@ -11,7 +11,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "prisma seed"
+    "prisma:seed": "node prisma/seed.js"
   },
   "repository": {
     "type": "git",
