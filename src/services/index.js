@@ -1,1 +1,1 @@
-export {listar} from "./sessoes.service.js";
+export { listar, buscarPorId, criar, atualizar, remover } from "./sessoes.service.js";

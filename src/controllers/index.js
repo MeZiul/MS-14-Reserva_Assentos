@@ -1,1 +1,1 @@
-export { listarSessoes } from "./sessoes.controller.js";
+export { listarSessoes, buscarSessaoPorId, criarSessao, atualizarSessao, removerSessao } from "./sessoes.controller.js";
