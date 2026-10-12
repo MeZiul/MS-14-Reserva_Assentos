@@ -1,12 +1,10 @@
-// src/controllers/sessoes.controller.js
-
 import { listar, buscarPorId, criar, atualizar, remover } from "../services/index.js";
 
 export async function listarSessoes(req, res, next) {
   try {
-    const sessoes = await listar();
+    const resultado = await listar(req.query);
 
-    return res.json(sessoes);
+    return res.status(200).json(resultado);
   } catch (error) {
     next(error);
   }
@@ -14,11 +12,9 @@ export async function listarSessoes(req, res, next) {
 
 export async function buscarSessaoPorId(req, res, next) {
   try {
-    const { id } = req.params;
+    const sessao = await buscarPorId(req.params.id);
 
-    const sessao = await buscarPorId(id);
-
-    return res.json(sessao);
+    return res.status(200).json(sessao);
   } catch (error) {
     next(error);
   }
@@ -36,11 +32,9 @@ export async function criarSessao(req, res, next) {
 
 export async function atualizarSessao(req, res, next) {
   try {
-    const { id } = req.params;
+    const sessao = await atualizar(req.params.id, req.body);
 
-    const sessao = await atualizar(id, req.body);
-
-    return res.json(sessao);
+    return res.status(200).json(sessao);
   } catch (error) {
     next(error);
   }
@@ -48,9 +42,7 @@ export async function atualizarSessao(req, res, next) {
 
 export async function removerSessao(req, res, next) {
   try {
-    const { id } = req.params;
-
-    await remover(id);
+    await remover(req.params.id);
 
     return res.status(204).send();
   } catch (error) {

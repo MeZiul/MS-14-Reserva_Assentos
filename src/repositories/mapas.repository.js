@@ -6,8 +6,7 @@ class MapasRepository extends BaseRepository {
   }
 
   listarComLocal() {
-    return this.listar(
-      {},
+    return this.listar({},
       {
         include: { local: true },
         orderBy: { nome: "asc" }
@@ -17,7 +16,7 @@ class MapasRepository extends BaseRepository {
 
   buscarPorIdComLocal(id) {
     return this.buscarPorId(id, {
-      include: { local: true },
+      include: { local: true }
     });
   }
 
@@ -25,16 +24,43 @@ class MapasRepository extends BaseRepository {
     return this.buscarPorId(id, {
       include: {
         local: true,
-        setores: {
-          include: { assentos: true }
-        }
+        setores: { include: { assentos: true } }
       }
     });
   }
 
-  criarComLocal(dados) {
-    return this.criar(dados).then((mapa) => {
-      return this.buscarPorIdComLocal(mapa.id);
+  criarComEstrutura({ localId, nome, capacidadeTotal, setores }) {
+    return this.db.create({
+      data: {
+        nome,
+        capacidadeTotal,
+
+        local: { connect: { id: localId } },
+
+        setores: {
+          create: setores.map((setor) => ({
+            nome: setor.nome,
+            ordemExibicao: setor.ordemExibicao,
+            categoria: setor.categoria ?? null,
+
+            assentos: {
+              create: setor.assentos.map((assento) => ({
+                fileira: assento.fileira,
+                numero: assento.numero,
+                x: assento.x,
+                y: assento.y,
+                atributo: assento.atributo,
+                ordemNaFileira: assento.ordemNaFileira,
+              }))
+            }
+          }))
+        }
+      },
+
+      include: {
+        local: true,
+        setores: { include: { assentos: true } }
+      }
     });
   }
 
