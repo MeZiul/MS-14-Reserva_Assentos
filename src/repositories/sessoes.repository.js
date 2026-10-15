@@ -108,49 +108,72 @@ class SessoesRepository extends BaseRepository {
     });
   }
 
-  criarComLocal({ mapaId, inicioEm, situacao, prazoBloqueioSegundos, maxProrrogacoes, faixas }) {
-    return this.db.create({
-      data: {
-        inicioEm,
-        situacao,
-        prazoBloqueioSegundos,
-        maxProrrogacoes,
 
-        mapa: {
-          connect: {
-            id: mapaId
-          }
-        },
-
-        faixas: {
-          create: faixas.map((faixa) => ({
-            valor: faixa.valor,
-            meiaEntrada: faixa.meiaEntrada ?? null,
-            vigenteDe: faixa.vigenteDe,
-            vigenteAte: faixa.vigenteAte ?? null,
-
-            setor: {
-              connect: {
-                id: faixa.setorId
-              }
-            }
-          }))
-        }
-      },
-
-      include: {
-        mapa: {
-          include: {
-            local: true
-          }
-        },
-
-        faixas: {
-          include: {
-            setor: true
+  async criarComLocal({ mapaId, inicioEm, situacao, prazoBloqueioSegundos, maxProrrogacoes, faixas }) {
+    return this.prisma.$transaction(async (tx) => {
+      const mapa = await tx.mapa.findUnique({
+        where: { id: mapaId },
+        include: {
+          setores: {
+            include: { assentos: true }
           }
         }
+      });
+
+      if (!mapa) {
+        const error = new Error("Mapa não encontrado.");
+        error.status = 404;
+        throw error;
       }
+
+      const assentosIds = mapa.setores.flatMap(
+        (setor) => setor.assentos.map((assento) => assento.id)
+      );
+
+      if (assentosIds.length === 0) {
+        const error = new Error("O mapa não possui assentos.");
+        error.status = 422;
+        throw error;
+      }
+
+      const sessao = await tx.sessao.create({
+        data: {
+          mapaId,
+          inicioEm,
+          situacao,
+          prazoBloqueioSegundos,
+          maxProrrogacoes,
+          faixas: {
+            create: faixas.map((faixa) => ({
+              setorId: faixa.setorId,
+              valor: faixa.valor,
+              meiaEntrada: faixa.meiaEntrada ?? null,
+              vigenteDe: faixa.vigenteDe,
+              vigenteAte: faixa.vigenteAte ?? null
+            }))
+          }
+        }
+      });
+
+      await tx.assentoSessao.createMany({
+        data: assentosIds.map((assentoId) => ({
+          sessaoId: sessao.id,
+          assentoId,
+          estado: "LIVRE"
+        }))
+      });
+
+      return tx.sessao.findUnique({
+        where: { id: sessao.id },
+        include: {
+          mapa: {
+            include: { local: true }
+          },
+          faixas: {
+            include: { setor: true }
+          }
+        }
+      });
     });
   }
 

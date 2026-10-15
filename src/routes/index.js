@@ -1,4 +1,5 @@
-export { locaisRoutes } from "./locais.routes.js";
-export { mapasRoutes } from "./mapas.routes.js";
-export { sessoesRoutes } from "./sessoes.routes.js";
-export { usuariosRoutes } from "./usuarios.routes.js";
+export * from "./locais.routes.js";
+export * from "./mapas.routes.js";
+export * from "./sessoes.routes.js";
+export * from "./usuarios.routes.js";
+export * from "./bloqueios.routes.js"
