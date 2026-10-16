@@ -16,6 +16,16 @@ class UsuariosRepository extends BaseRepository {
         super("usuario");
     }
 
+    buscarPapelPorId(id) {
+        return this.db.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                papel: true
+            }
+        });
+    }
+
     listarPaginado(page, limit) {
         return this.listarComPaginacao({},
             {

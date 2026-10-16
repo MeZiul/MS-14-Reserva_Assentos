@@ -2,17 +2,13 @@ import { z } from "zod";
 
 const assentoSchema = z.object({
     fileira: z.string().trim().min(1).max(10),
-
     numero: z.number().int().positive(),
-
     x: z.number().finite(),
-
     y: z.number().finite(),
+    atributo: z.enum(["PADRAO", "CADEIRANTE", "ACOMPANHANTE", "VISAO_OBSTRUIDA", "CAMAROTE"]).default("PADRAO"),
+    ordemNaFileira: z.number().int().nonnegative(),
+    grupoContiguo: z.number().int().positive().default(1),
 
-    atributo: z.enum(["PADRAO", "CADEIRANTE", "ACOMPANHANTE", "VISAO_OBSTRUIDA", "CAMAROTE"])
-        .default("PADRAO"),
-
-    ordemNaFileira: z.number().int().nonnegative()
 }).superRefine((assento, contexto) => {
     if (!assento.fileira.trim()) {
         contexto.addIssue({
@@ -59,4 +55,13 @@ export const criarMapaSchema = z.object({
     nome: z.string().trim().min(2).max(150),
 
     setores: z.array(setorSchema).min(1)
+});
+
+export const mapaLocalParamsSchema = z.object({
+    id: z.uuid()
+});
+
+export const mapaDetalheParamsSchema = z.object({
+    id: z.uuid(),
+    mapaId: z.uuid()
 });

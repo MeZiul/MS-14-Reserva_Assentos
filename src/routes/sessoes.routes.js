@@ -1,18 +1,17 @@
 import { Router } from "express";
 
-import { listarSessoes, buscarSessaoPorId, criarSessao, atualizarSessao, removerSessao, bloqueiosRoutes } from "../controllers/index.js";
-
+import { listarSessoes, buscarSessaoPorId, criarSessao, atualizarSessao, removerSessao } from "../controllers/index.js";
 import { bloqueiosRoutes } from "./bloqueios.routes.js";
+import { validar } from "../middlewares/validate.middleware.js";
+import { criarSessaoSchema, atualizarSessaoSchema, listarSessoesQuerySchema, sessaoIdParamsSchema } from "../schemas/sessoes.schema.js";
 
 const sessoesRoutes = Router();
 
-sessoesRoutes.get("/", listarSessoes);
-sessoesRoutes.post("/", criarSessao);
-
-// Rotas de assentos e bloqueios
+sessoesRoutes.get("/", validar({ query: listarSessoesQuerySchema }), listarSessoes);
+sessoesRoutes.post("/", validar({ body: criarSessaoSchema }), criarSessao);
 sessoesRoutes.use("/:id", bloqueiosRoutes);
-sessoesRoutes.get("/:id", buscarSessaoPorId);
-sessoesRoutes.put("/:id", atualizarSessao);
-sessoesRoutes.delete("/:id", removerSessao);
+sessoesRoutes.get("/:id", validar({ params: sessaoIdParamsSchema }), buscarSessaoPorId);
+sessoesRoutes.put("/:id", validar({ params: sessaoIdParamsSchema, body: atualizarSessaoSchema }), atualizarSessao);
+sessoesRoutes.delete("/:id", validar({ params: sessaoIdParamsSchema }), removerSessao);
 
 export { sessoesRoutes };

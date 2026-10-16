@@ -26,3 +26,20 @@ export const atualizarUsuarioSchema = z.object({
         (dados) => Object.keys(dados).length > 0,
         { message: "Informe pelo menos um campo para atualizar." }
     );
+
+export const usuarioIdParamsSchema = z.object({
+    id: z.uuid()
+});
+
+export const listarUsuariosQuerySchema = z.object({
+    page: z.coerce.number()
+        .int()
+        .min(1)
+        .default(1),
+
+    limit: z.coerce.number()
+        .int()
+        .min(1)
+        .max(100)
+        .default(20)
+});

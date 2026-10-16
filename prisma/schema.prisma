@@ -147,7 +147,8 @@ model Assento {
   x              Float
   y              Float
   atributo       AtributoAssento @default(PADRAO)
-  ordemNaFileira Int // usada para calcular blocos contíguos
+  ordemNaFileira Int // usada para calcular blocos contíguos  
+  grupoContiguo  Int             @default(1)
 
   setor   Setor           @relation(fields: [setorId], references: [id])
   estados AssentoSessao[]
@@ -212,24 +213,30 @@ enum EstadoAssento {
 }
 
 model AssentoSessao {
-  id              String        @id @default(uuid()) @db.Uuid
-  sessaoId        String        @db.Uuid
-  assentoId       String        @db.Uuid
-  estado          EstadoAssento @default(LIVRE)
-  bloqueioAtualId String?       @unique @db.Uuid
-  reservaAtualId  String?       @unique @db.Uuid
-  versao          Int           @default(0) // lock otimista
-  atualizadoEm    DateTime      @updatedAt
+  id        String @id @default(uuid()) @db.Uuid
+  sessaoId  String @db.Uuid
+  assentoId String @db.Uuid
 
-  sessao        Sessao    @relation(fields: [sessaoId], references: [id])
-  assento       Assento   @relation(fields: [assentoId], references: [id])
+  estado EstadoAssento @default(LIVRE)
+
+  bloqueioAtualId String? @db.Uuid
+  reservaAtualId  String? @db.Uuid
+
+  versao       Int      @default(0)
+  atualizadoEm DateTime @updatedAt
+
+  sessao Sessao @relation(fields: [sessaoId], references: [id])
+
+  assento Assento @relation(fields: [assentoId], references: [id])
+
   bloqueioAtual Bloqueio? @relation("BloqueioAtual", fields: [bloqueioAtualId], references: [id])
-  reservaAtual  Reserva?  @relation("ReservaAtual", fields: [reservaAtualId], references: [id])
 
-  // 1 linha de estado por assento por sessão — a integridade
-  // exigida na seção 8.1 do RFP, não só no código
+  reservaAtual Reserva? @relation("ReservaAtual", fields: [reservaAtualId], references: [id])
+
   @@unique([sessaoId, assentoId])
   @@index([sessaoId, estado])
+  @@index([bloqueioAtualId])
+  @@index([reservaAtualId])
   @@map("assentos_sessao")
 }
 

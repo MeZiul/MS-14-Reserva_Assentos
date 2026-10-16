@@ -1,8 +1,11 @@
-import { criarMapa, buscarMapaDoLocal } from "../services/index.js";
+import { criarMapa, buscarMapaDoLocal } from "../services/mapas.service.js";
 
 export async function criarMapaController(req, res, next) {
     try {
-        const mapa = await criarMapa(req.params.id, req.body);
+        const { id } = req.validated.params;
+        const dados = req.validated.body;
+
+        const mapa = await criarMapa(id, dados);
 
         return res.status(201).json(mapa);
     } catch (error) {
@@ -12,7 +15,9 @@ export async function criarMapaController(req, res, next) {
 
 export async function buscarMapaController(req, res, next) {
     try {
-        const mapa = await buscarMapaDoLocal(req.params.id, req.params.mapaId);
+        const { id, mapaId } = req.validated.params;
+
+        const mapa = await buscarMapaDoLocal(id, mapaId);
 
         return res.status(200).json(mapa);
     } catch (error) {

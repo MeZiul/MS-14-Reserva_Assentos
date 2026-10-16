@@ -104,3 +104,7 @@ export const listarSessoesQuerySchema = z.object({
         });
     }
 });
+
+export const sessaoIdParamsSchema = z.object({
+    id: z.uuid()
+});

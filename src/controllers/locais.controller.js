@@ -1,8 +1,8 @@
-import { criarLocal } from "../services/index.js";
+import { criarLocal } from "../services/locais.service.js";
 
 export async function criarLocalController(req, res, next) {
     try {
-        const local = await criarLocal(req.body);
+        const local = await criarLocal(req.validated.body);
 
         return res.status(201).json(local);
     } catch (error) {

@@ -54,7 +54,8 @@ class MapasRepository extends BaseRepository {
               }))
             }
           }))
-        }
+        },
+        grupoContiguo: assento.grupoContiguo
       },
 
       include: {

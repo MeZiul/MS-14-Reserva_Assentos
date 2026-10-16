@@ -1,10 +1,8 @@
 import { consultarDisponibilidade, criarBloqueio } from "../services/bloqueios.service.js";
 
-import { validarSessaoId, validarCriacaoBloqueio } from "../schemas/bloqueios.schema.js";
-
 export async function consultarAssentosController(req, res, next) {
   try {
-    const { id } = validarSessaoId(req.params);
+    const { id } = req.validated.params;
 
     const resultado = await consultarDisponibilidade(id);
 
@@ -16,10 +14,11 @@ export async function consultarAssentosController(req, res, next) {
 
 export async function criarBloqueioController(req, res, next) {
   try {
-    const { id } = validarSessaoId(req.params);
-    const dados = validarCriacaoBloqueio(req.body);
+    const { id } = req.validated.params;
 
-    const resultado = await criarBloqueio(id, req.usuario.id, dados);
+    const compradorId = req.compradorId;
+
+    const resultado = await criarBloqueio(id, compradorId, req.validated.body);
 
     return res.status(201).json(resultado);
   } catch (error) {

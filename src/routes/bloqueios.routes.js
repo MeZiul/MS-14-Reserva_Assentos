@@ -1,11 +1,28 @@
 import { Router } from "express";
+
 import { consultarAssentosController, criarBloqueioController } from "../controllers/bloqueios.controller.js";
-import { autenticarComprador } from "../middlewares/auth.middleware.js";
+import { validar } from "../middlewares/validate.middleware.js";
+import { sessaoIdParamsSchema, criarBloqueioSchema } from "../schemas/bloqueios.schema.js";
+import { compradorAutenticado } from "../middlewares/comprador-autenticado.middleware.js";
 
-const bloqueiosRoutes = Router({ mergeParams: true });
+const bloqueiosRoutes = Router({
+    mergeParams: true
+});
 
-bloqueiosRoutes.get("/assentos", consultarAssentosController);
+// Consulta dos assentos da sessao
+bloqueiosRoutes.get("/assentos",
+    validar({ params: sessaoIdParamsSchema }),
+    consultarAssentosController
+);
 
-bloqueiosRoutes.post("/bloqueios", autenticarComprador, criarBloqueioController);
+// Bloqueio de assentos
+bloqueiosRoutes.post("/bloqueios",
+    compradorAutenticado,
+    validar({
+        params: sessaoIdParamsSchema,
+        body: criarBloqueioSchema
+    }),
+    criarBloqueioController
+);
 
 export { bloqueiosRoutes };

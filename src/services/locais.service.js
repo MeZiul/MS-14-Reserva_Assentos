@@ -1,22 +1,26 @@
-import { locaisRepository } from "../repositories/index.js";
-import { criarLocalSchema } from "../schemas/locais.schema.js";
+import { locaisRepository } from "../repositories/locais.repository.js";
+import { usuariosRepository } from "../repositories/usuarios.repository.js";
+
+function erro(mensagem, status = 400) {
+    const error = new Error(mensagem);
+    error.status = status;
+    return error;
+}
 
 export async function criarLocal(dados) {
-    const dadosValidados = criarLocalSchema.parse(dados);
+    const dono = await usuariosRepository.buscarPapelPorId(dados.donoId);
 
-    const donoExiste = await locaisRepository.prisma.usuario.count({
-        where: { id: dadosValidados.donoId }
-    });
+    if (!dono) {
+        throw erro("Usuário responsável não encontrado.", 404);
+    }
 
-    if (!donoExiste) {
-        const error = new Error("Usuário responsável não encontrado.");
-        error.status = 404;
-        throw error;
+    if (dono.papel !== "PROMOTOR") {
+        throw erro("O responsável pelo local deve ser um promotor.", 422);
     }
 
     return locaisRepository.criar({
-        nome: dadosValidados.nome,
-        endereco: dadosValidados.endereco ?? null,
-        donoId: dadosValidados.donoId
+        nome: dados.nome,
+        endereco: dados.endereco ?? null,
+        donoId: dono.id
     });
 }
