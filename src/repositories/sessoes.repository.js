@@ -1,8 +1,28 @@
 import BaseRepository from "./base/base.repository.js";
+import { ESTADO_ASSENTO } from "../constants/seat-status.js";
 
 class SessoesRepository extends BaseRepository {
   constructor() {
     super("sessao");
+  }
+
+
+  buscarSessaoDoPromotor(sessaoId, promotorId) {
+    return this.db.findFirst({
+      where: {
+        id: sessaoId,
+        mapa: {
+          is: {
+            local: {
+              is: {
+                donoId: promotorId
+              }
+            }
+          }
+        }
+      },
+      select: { id: true }
+    });
   }
 
   listarComLocal() {
@@ -159,7 +179,7 @@ class SessoesRepository extends BaseRepository {
         data: assentosIds.map((assentoId) => ({
           sessaoId: sessao.id,
           assentoId,
-          estado: "LIVRE"
+          estado: ESTADO_ASSENTO.LIVRE
         }))
       });
 

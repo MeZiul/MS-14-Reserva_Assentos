@@ -5,7 +5,11 @@ export async function criarMapaController(req, res, next) {
         const { id } = req.validated.params;
         const dados = req.validated.body;
 
-        const mapa = await criarMapa(id, dados);
+        // Identifica o promotor autenticado pelo BetterAuth
+        const promotorId = req.usuario.id;
+
+        // O service verificará se o local pertence ao promotor
+        const mapa = await criarMapa(id, dados, promotorId);
 
         return res.status(201).json(mapa);
     } catch (error) {

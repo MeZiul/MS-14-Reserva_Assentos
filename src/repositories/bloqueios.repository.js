@@ -1,4 +1,6 @@
 import { prisma } from "../lib/prisma.js";
+import { ESTADO_ASSENTO } from "../constants/seat-status.js";
+import { SITUACAO_BLOQUEIO } from "../constants/lock-status.js";
 
 export const bloqueiosRepository = {
 
@@ -58,7 +60,7 @@ export const bloqueiosRepository = {
         sessaoId: dados.sessaoId,
         compradorId: dados.compradorId,
         expiraEm: dados.expiraEm,
-        situacao: "ATIVO"
+        situacao: SITUACAO_BLOQUEIO.ATIVO
       }
     });
   },
@@ -68,11 +70,11 @@ export const bloqueiosRepository = {
       where: {
         sessaoId,
         assentoId: { in: ids },
-        estado: "LIVRE",
+        estado: ESTADO_ASSENTO.LIVRE,
         bloqueioAtualId: null
       },
       data: {
-        estado: "BLOQUEADO",
+        estado: ESTADO_ASSENTO.BLOQUEADO,
         bloqueioAtualId: bloqueioId,
         versao: { increment: 1 }
       }
@@ -85,7 +87,7 @@ export const bloqueiosRepository = {
     const expirados = await tx.bloqueio.findMany({
       where: {
         sessaoId,
-        situacao: "ATIVO",
+        situacao: SITUACAO_BLOQUEIO.ATIVO,
         expiraEm: { lte: agora }
       },
       select: { id: true }
@@ -98,11 +100,11 @@ export const bloqueiosRepository = {
     await tx.assentoSessao.updateMany({
       where: {
         sessaoId,
-        estado: "BLOQUEADO",
+        estado: ESTADO_ASSENTO.BLOQUEADO,
         bloqueioAtualId: { in: ids }
       },
       data: {
-        estado: "LIVRE",
+        estado: ESTADO_ASSENTO.LIVRE,
         bloqueioAtualId: null,
         versao: { increment: 1 }
       }
@@ -111,10 +113,10 @@ export const bloqueiosRepository = {
     await tx.bloqueio.updateMany({
       where: {
         id: { in: ids },
-        situacao: "ATIVO"
+        situacao: SITUACAO_BLOQUEIO.ATIVO
       },
       data: {
-        situacao: "EXPIRADO"
+        situacao: SITUACAO_BLOQUEIO.EXPIRADO
       }
     });
 
@@ -187,7 +189,7 @@ export const bloqueiosRepository = {
     return tx.bloqueio.update({
       where: { id: bloqueioId },
       data: {
-        situacao: "LIBERADO"
+        situacao: SITUACAO_BLOQUEIO.LIBERADO
       }
     });
   },
@@ -197,10 +199,10 @@ export const bloqueiosRepository = {
       where: {
         sessaoId,
         bloqueioAtualId: bloqueioId,
-        estado: "BLOQUEADO"
+        estado: ESTADO_ASSENTO.BLOQUEADO
       },
       data: {
-        estado: "LIVRE",
+        estado: ESTADO_ASSENTO.LIVRE,
         bloqueioAtualId: null,
         versao: { increment: 1 }
       }

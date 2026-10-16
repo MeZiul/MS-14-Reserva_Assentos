@@ -5,6 +5,20 @@ class MapasRepository extends BaseRepository {
     super("mapa");
   }
 
+  buscarMapaDoPromotor(mapaId, promotorId) {
+    return this.db.findFirst({
+      where: {
+        id: mapaId,
+        local: {
+          is: {
+            donoId: promotorId
+          }
+        }
+      },
+      select: { id: true }
+    });
+  }
+
   listarComLocal() {
     return this.listar({},
       {

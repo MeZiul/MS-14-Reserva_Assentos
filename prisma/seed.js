@@ -2,6 +2,9 @@ import "dotenv/config";
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/index.js";
+import { PAPEIS_USUARIO } from "../src/constants/roles.js";
+import { SITUACAO_SESSAO } from "../src/constants/session-status.js";
+import { ESTADO_ASSENTO } from "../src/constants/seat-status.js";
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
@@ -24,7 +27,7 @@ async function main() {
     create: {
       nome: "Promotor Exemplo",
       email: "promotor.show@evento.com",
-      papel: "PROMOTOR",
+      papel: PAPEIS_USUARIO.PROMOTOR,
     },
   });
 
@@ -79,7 +82,7 @@ async function main() {
         Date.now() + 7 * 24 * 60 * 60 * 1000
       ),
 
-      situacao: "VENDAS_ABERTAS",
+      situacao: SITUACAO_SESSAO.VENDAS_ABERTAS,
     },
   });
 
@@ -98,7 +101,7 @@ async function main() {
     data: assentos.map((assento) => ({
       sessaoId: sessao.id,
       assentoId: assento.id,
-      estado: "LIVRE",
+      estado: ESTADO_ASSENTO.LIVRE,
     })),
   });
 

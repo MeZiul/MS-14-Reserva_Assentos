@@ -1,13 +1,15 @@
 import { conflitoAssentos } from "./errors/bloqueios.errors.js";
+import { ESTADO_ASSENTO } from "../constants/seat-status.js";
+import { SITUACAO_BLOQUEIO } from "../constants/lock-status.js";
 
 export function assentoDisponivel(item, agora) {
-    if (item.estado === "VENDIDO") return false;
+    if (item.estado === ESTADO_ASSENTO.VENDIDO) return false;
 
-    if (item.estado === "LIVRE" && !item.bloqueioAtualId) {
+    if (item.estado === ESTADO_ASSENTO.LIVRE && !item.bloqueioAtualId) {
         return true;
     }
 
-    if (item.estado === "BLOQUEADO" && item.bloqueioAtual?.situacao === "ATIVO" && item.bloqueioAtual.expiraEm <= agora) {
+    if (item.estado === ESTADO_ASSENTO.BLOQUEADO && item.bloqueioAtual?.situacao === SITUACAO_BLOQUEIO.ATIVO && item.bloqueioAtual.expiraEm <= agora) {
         return true;
     }
 

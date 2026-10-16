@@ -1,18 +1,22 @@
 import { bloqueiosRepository } from "../repositories/index.js";
 import { assentoDisponivel, selecionarEspecificos, selecionarAdjacentes } from "../utils/bloqueio.utils.js";
 import { erroNegocio, conflitoAssentos } from "../utils/errors/bloqueios.errors.js";
+import { SITUACAO_SESSAO } from "../constants/session-status.js";
+import { ESTADO_ASSENTO } from "../constants/seat-status.js";
+import { SITUACAO_BLOQUEIO } from "../constants/lock-status.js";
+import { CODIGOS_ERRO } from "../utils/errors/error-codes.js";
 
 function validarSessaoParaVenda(sessao) {
   if (!sessao) {
-    throw erroNegocio("SESSAO_NAO_ENCONTRADA", "Sessão não encontrada.", 404);
+    throw erroNegocio(CODIGOS_ERRO.SESSAO_NAO_ENCONTRADA, "Sessão não encontrada.", 404);
   }
 
-  if (sessao.situacao !== "VENDAS_ABERTAS") {
-    throw erroNegocio("SESSAO_INDISPONIVEL", "A sessão não está disponível para vendas.", 409);
+  if (sessao.situacao !== SITUACAO_SESSAO.VENDAS_ABERTAS) {
+    throw erroNegocio(CODIGOS_ERRO.SESSAO_INDISPONIVEL, "A sessão não está disponível para vendas.", 409);
   }
 
   if (sessao.inicioEm <= new Date()) {
-    throw erroNegocio("SESSAO_INICIADA", "A sessão já foi iniciada.", 409);
+    throw erroNegocio(CODIGOS_ERRO.SESSAO_INICIADA, "A sessão já foi iniciada.", 409);
   }
 }
 
@@ -44,7 +48,7 @@ function montarDisponibilidade(sessao, assentos, agora) {
       atributo: item.assento.atributo,
       ordemNaFileira: item.assento.ordemNaFileira,
       estado: assentoDisponivel(item, agora)
-        ? "LIVRE"
+        ? ESTADO_ASSENTO.LIVRE
         : item.estado
     });
   }
@@ -62,7 +66,7 @@ export async function consultarDisponibilidade(sessaoId) {
     const existe = await bloqueiosRepository.bloquearSessao(tx, sessaoId);
 
     if (!existe) {
-      throw erroNegocio("SESSAO_NAO_ENCONTRADA", "Sessão não encontrada.", 404);
+      throw erroNegocio(CODIGOS_ERRO.SESSAO_NAO_ENCONTRADA, "Sessão não encontrada.", 404);
     }
 
     const sessao = await bloqueiosRepository.buscarSessao(tx, sessaoId);
@@ -82,7 +86,7 @@ export async function criarBloqueio(sessaoId, compradorId, dados) {
     const existe = await bloqueiosRepository.bloquearSessao(tx, sessaoId);
 
     if (!existe) {
-      throw erroNegocio("SESSAO_NAO_ENCONTRADA", "Sessão não encontrada.", 404);
+      throw erroNegocio(CODIGOS_ERRO.SESSAO_NAO_ENCONTRADA, "Sessão não encontrada.", 404);
     }
 
     const sessao = await bloqueiosRepository.buscarSessao(tx, sessaoId);
@@ -103,7 +107,7 @@ export async function criarBloqueio(sessaoId, compradorId, dados) {
       const setorExiste = sessao.faixas.some((faixa) => faixa.setorId === dados.setorId);
 
       if (!setorExiste) {
-        throw erroNegocio("SETOR_INVALIDO", "Setor não pertence à sessão.", 422);
+        throw erroNegocio(CODIGOS_ERRO.SETOR_INVALIDO, "Setor não pertence à sessão.", 422);
       }
 
       assentosIds = selecionarAdjacentes(assentos, dados.quantidade, dados.setorId, agora);
@@ -149,7 +153,7 @@ function erroBloqueio(codigo, mensagem, status) {
 function montarRespostaBloqueio(bloqueio) {
   const agora = Date.now();
 
-  const segundosRestantes = bloqueio.situacao === "ATIVO" ? Math.max(0, Math.ceil((bloqueio.expiraEm.getTime() - agora) / 1000)) : 0;
+  const segundosRestantes = bloqueio.situacao === SITUACAO_BLOQUEIO.ATIVO ? Math.max(0, Math.ceil((bloqueio.expiraEm.getTime() - agora) / 1000)) : 0;
 
   return {
     id: bloqueio.id,
@@ -183,7 +187,7 @@ export async function consultarBloqueio(bloqueioId, compradorId) {
     const identificacao = await bloqueiosRepository.buscarIdentificacaoBloqueio(tx, bloqueioId, compradorId);
 
     if (!identificacao) {
-      return { erro: "BLOQUEIO_NAO_ENCONTRADO", mensagem: "Bloqueio não encontrado.", status: 404 };
+      return { erro: CODIGOS_ERRO.BLOQUEIO_NAO_ENCONTRADO, mensagem: "Bloqueio não encontrado.", status: 404 };
     }
 
     await bloqueiosRepository.bloquearSessao(tx, identificacao.sessaoId);
@@ -207,7 +211,7 @@ export async function prorrogarBloqueio(bloqueioId, compradorId) {
     const identificacao = await bloqueiosRepository.buscarIdentificacaoBloqueio(tx, bloqueioId, compradorId);
 
     if (!identificacao) {
-      return { erro: "BLOQUEIO_NAO_ENCONTRADO", mensagem: "Bloqueio não encontrado.", status: 404 };
+      return { erro: CODIGOS_ERRO.BLOQUEIO_NAO_ENCONTRADO, mensagem: "Bloqueio não encontrado.", status: 404 };
     }
 
     await bloqueiosRepository.bloquearSessao(tx, identificacao.sessaoId);
@@ -218,26 +222,26 @@ export async function prorrogarBloqueio(bloqueioId, compradorId) {
 
     const bloqueio = await bloqueiosRepository.buscarBloqueioComSessao(tx, bloqueioId, compradorId);
 
-    if (bloqueio.situacao === "EXPIRADO") {
-      return { erro: "BLOQUEIO_EXPIRADO", mensagem: "O bloqueio já expirou.", status: 410 };
+    if (bloqueio.situacao === SITUACAO_BLOQUEIO.EXPIRADO) {
+      return { erro: CODIGOS_ERRO.BLOQUEIO_EXPIRADO, mensagem: "O bloqueio já expirou.", status: 410 };
     }
 
-    if (bloqueio.situacao !== "ATIVO") {
-      return { erro: "BLOQUEIO_INDISPONIVEL", mensagem: "O bloqueio não está ativo.", status: 409 };
+    if (bloqueio.situacao !== SITUACAO_BLOQUEIO.ATIVO) {
+      return { erro: CODIGOS_ERRO.BLOQUEIO_INDISPONIVEL, mensagem: "O bloqueio não está ativo.", status: 409 };
     }
 
     if (bloqueio.prorrogacoes >= bloqueio.sessao.maxProrrogacoes) {
-      return { erro: "LIMITE_PRORROGACOES", mensagem: "Limite de prorrogações atingido.", status: 409 };
+      return { erro: CODIGOS_ERRO.LIMITE_PRORROGACOES, mensagem: "Limite de prorrogações atingido.", status: 409 };
     }
 
-    if (bloqueio.sessao.situacao !== "VENDAS_ABERTAS" || bloqueio.sessao.inicioEm <= agora) {
-      return { erro: "SESSAO_INDISPONIVEL", mensagem: "A sessão não permite prorrogação.", status: 409 };
+    if (bloqueio.sessao.situacao !== SITUACAO_SESSAO.VENDAS_ABERTAS || bloqueio.sessao.inicioEm <= agora) {
+      return { erro: CODIGOS_ERRO.SESSAO_INDISPONIVEL, mensagem: "A sessão não permite prorrogação.", status: 409 };
     }
 
     const novaExpiracao = new Date(bloqueio.expiraEm.getTime() + bloqueio.sessao.prazoBloqueioSegundos * 1000);
 
     if (novaExpiracao >= bloqueio.sessao.inicioEm) {
-      return { erro: "PRAZO_INVALIDO", mensagem: "A prorrogação ultrapassa o início da sessão.", status: 409 };
+      return { erro: CODIGOS_ERRO.PRAZO_INVALIDO, mensagem: "A prorrogação ultrapassa o início da sessão.", status: 409 };
     }
 
     await bloqueiosRepository.atualizarProrrogacao(tx, bloqueioId, novaExpiracao);
@@ -258,7 +262,7 @@ export async function liberarBloqueio(bloqueioId, compradorId) {
     const identificacao = await bloqueiosRepository.buscarIdentificacaoBloqueio(tx, bloqueioId, compradorId);
 
     if (!identificacao) {
-      return { erro: "BLOQUEIO_NAO_ENCONTRADO", mensagem: "Bloqueio não encontrado.", status: 404 };
+      return { erro: CODIGOS_ERRO.BLOQUEIO_NAO_ENCONTRADO, mensagem: "Bloqueio não encontrado.", status: 404 };
     }
 
     await bloqueiosRepository.bloquearSessao(tx, identificacao.sessaoId);
@@ -267,32 +271,32 @@ export async function liberarBloqueio(bloqueioId, compradorId) {
 
     const bloqueio = await bloqueiosRepository.buscarBloqueioComSessao(tx, bloqueioId, compradorId);
 
-    if (bloqueio.situacao === "EXPIRADO") {
-      return { erro: "BLOQUEIO_EXPIRADO", mensagem: "O bloqueio já expirou.", status: 410 };
+    if (bloqueio.situacao === SITUACAO_BLOQUEIO.EXPIRADO) {
+      return { erro: CODIGOS_ERRO.BLOQUEIO_EXPIRADO, mensagem: "O bloqueio já expirou.", status: 410 };
     }
 
-    if (bloqueio.situacao !== "ATIVO") {
-      return { erro: "BLOQUEIO_INDISPONIVEL", mensagem: "O bloqueio não pode ser liberado.", status: 409 };
+    if (bloqueio.situacao !== SITUACAO_BLOQUEIO.ATIVO) {
+      return { erro: CODIGOS_ERRO.BLOQUEIO_INDISPONIVEL, mensagem: "O bloqueio não pode ser liberado.", status: 409 };
     }
 
     const quantidade = bloqueio.assentosAtuais.length;
 
     if (quantidade === 0) {
-      return { erro: "BLOQUEIO_SEM_ASSENTOS", mensagem: "Nenhum assento vinculado ao bloqueio.", status: 409 };
+      return { erro: CODIGOS_ERRO.BLOQUEIO_SEM_ASSENTOS, mensagem: "Nenhum assento vinculado ao bloqueio.", status: 409 };
     }
 
     // Valida a consistência antes da operação.
-    const inconsistentes = bloqueio.assentosAtuais.some((item) => item.estado !== "BLOQUEADO" || item.bloqueioAtualId !== bloqueioId);
+    const inconsistentes = bloqueio.assentosAtuais.some((item) => item.estado !== ESTADO_ASSENTO.BLOQUEADO || item.bloqueioAtualId !== bloqueioId);
 
     if (inconsistentes) {
-      return { erro: "ESTADO_INCONSISTENTE", mensagem: "Assentos com estado inconsistente.", status: 409 };
+      return { erro: CODIGOS_ERRO.ESTADO_INCONSISTENTE, mensagem: "Assentos com estado inconsistente.", status: 409 };
     }
 
     const liberados = await bloqueiosRepository.liberarAssentosDoBloqueio(tx, identificacao.sessaoId, bloqueioId);
 
     if (liberados.count !== quantidade) {
       // Cessa a transação.
-      throw erroBloqueio("CONFLITO_ASSENTOS", "Não foi possível liberar todos os assentos.", 409);
+      throw erroBloqueio(CODIGOS_ERRO.CONFLITO_ASSENTOS, "Não foi possível liberar todos os assentos.", 409);
     }
 
     await bloqueiosRepository.marcarLiberado(tx, bloqueioId);

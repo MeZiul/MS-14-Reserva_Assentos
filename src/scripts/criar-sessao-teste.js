@@ -1,15 +1,16 @@
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
+import { PAPEIS_USUARIO } from "../constants/roles.js";
 import { prisma } from "../lib/prisma.js";
 
 async function main() {
     const comprador = await prisma.usuario.findFirst({
-        where: { papel: "COMPRADOR" },
+        where: { papel: PAPEIS_USUARIO.COMPRADOR },
         select: { id: true, email: true }
     });
 
     if (!comprador) {
-        throw new Error("Nenhum usuário COMPRADOR encontrado. Cadastre um comprador primeiro.");
+        throw new Error(`Nenhum usuário ${PAPEIS_USUARIO.COMPRADOR} encontrado. Cadastre um comprador primeiro.`);
     }
 
     const token = randomBytes(32).toString("hex");

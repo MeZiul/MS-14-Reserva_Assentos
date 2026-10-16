@@ -7,10 +7,10 @@ function erro(mensagem, status = 400) {
     return error;
 }
 
-export async function criarMapa(localId, dados) {
-    const localExiste = await locaisRepository.existe(localId);
+export async function criarMapa(localId, dados, promotorId) {
+    const local = await locaisRepository.pertenceAoPromotor(localId, promotorId);
 
-    if (!localExiste) {
+    if (!local) {
         throw erro("Local não encontrado.", 404);
     }
 

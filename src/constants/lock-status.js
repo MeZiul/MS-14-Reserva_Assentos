@@ -1,0 +1,1 @@
+export { SituacaoBloqueio as SITUACAO_BLOQUEIO } from "@prisma/client";

@@ -1,10 +1,11 @@
 
 import { z } from "zod";
+import { PAPEIS_USUARIO } from "../constants/roles.js";
 
 const camposUsuario = {
     nome: z.string().trim().min(2).max(100),
     email: z.string().trim().email().max(255),
-    papel: z.enum(["COMPRADOR", "PROMOTOR"]).optional(),
+    papel: z.enum(Object.values(PAPEIS_USUARIO)).optional(),
     imagem: z.string().url().nullable().optional(),
 };
 

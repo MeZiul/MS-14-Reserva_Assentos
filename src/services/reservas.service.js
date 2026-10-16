@@ -1,4 +1,8 @@
 import { reservasRepository } from "../repositories/reservas.repository.js";
+import { ESTADO_ASSENTO } from "../constants/seat-status.js";
+import { SITUACAO_SESSAO } from "../constants/session-status.js";
+import { SITUACAO_BLOQUEIO } from "../constants/lock-status.js";
+import { CODIGOS_ERRO } from "../utils/errors/error-codes.js";
 
 function erro(codigo, mensagem, status = 422) {
     const error = new Error(mensagem);
@@ -35,7 +39,7 @@ export async function confirmarReserva(bloqueioId, compradorId, dados, chaveIdem
         const inicial = await reservasRepository.buscarBloqueio(tx, bloqueioId, compradorId);
 
         if (!inicial) {
-            throw erro("BLOQUEIO_NAO_ENCONTRADO", "Bloqueio não encontrado.", 404);
+            throw erro(CODIGOS_ERRO.BLOQUEIO_NAO_ENCONTRADO, "Bloqueio não encontrado.", 404);
         }
 
         // Todas as operações de escrita da sessão seguem
@@ -46,40 +50,40 @@ export async function confirmarReserva(bloqueioId, compradorId, dados, chaveIdem
         const bloqueio = await reservasRepository.buscarBloqueio(tx, bloqueioId, compradorId);
 
         if (!bloqueio) {
-            throw erro("BLOQUEIO_NAO_ENCONTRADO", "Bloqueio não encontrado.", 404);
+            throw erro(CODIGOS_ERRO.BLOQUEIO_NAO_ENCONTRADO, "Bloqueio não encontrado.", 404);
         }
 
         // Repetição idempotente: retorna a mesma reserva.
-        if (bloqueio.situacao === "CONFIRMADO") {
+        if (bloqueio.situacao === SITUACAO_BLOQUEIO.CONFIRMADO) {
             if (bloqueio.chaveIdempotencia !== chaveIdempotencia) {
-                throw erro("BLOQUEIO_JA_CONFIRMADO", "O bloqueio já foi confirmado.", 409);
+                throw erro(CODIGOS_ERRO.BLOQUEIO_JA_CONFIRMADO, "O bloqueio já foi confirmado.", 409);
             }
 
             const reservaExistente = await reservasRepository.buscarReservaPorBloqueio(tx, bloqueioId);
 
             if (!reservaExistente || reservaExistente.referenciaPagamento !== dados.referenciaPagamento) {
-                throw erro("IDEMPOTENCIA_CONFLITANTE", "A chave já foi utilizada com outra confirmação.", 409);
+                throw erro(CODIGOS_ERRO.IDEMPOTENCIA_CONFLITANTE, "A chave já foi utilizada com outra confirmação.", 409);
             }
 
             return respostaReserva(reservaExistente);
         }
 
-        if (bloqueio.situacao !== "ATIVO") {
-            throw erro("BLOQUEIO_INDISPONIVEL", "O bloqueio não está ativo.", bloqueio.situacao === "EXPIRADO" ? 410 : 409);
+        if (bloqueio.situacao !== SITUACAO_BLOQUEIO.ATIVO) {
+            throw erro(CODIGOS_ERRO.BLOQUEIO_INDISPONIVEL, "O bloqueio não está ativo.", bloqueio.situacao === SITUACAO_BLOQUEIO.EXPIRADO ? 410 : 409);
         }
 
         if (bloqueio.expiraEm <= new Date()) {
-            throw erro("BLOQUEIO_EXPIRADO", "O prazo do bloqueio terminou.", 410);
+            throw erro(CODIGOS_ERRO.BLOQUEIO_EXPIRADO, "O prazo do bloqueio terminou.", 410);
         }
 
         const assentos = bloqueio.assentosAtuais;
 
         if (assentos.length === 0) {
-            throw erro("BLOQUEIO_SEM_ASSENTOS", "O bloqueio não possui assentos disponíveis.", 409);
+            throw erro(CODIGOS_ERRO.BLOQUEIO_SEM_ASSENTOS, "O bloqueio não possui assentos disponíveis.", 409);
         }
 
-        if (assentos.some((item) => item.estado !== "BLOQUEADO" || item.bloqueioAtualId !== bloqueioId)) {
-            throw erro("ESTADO_INCONSISTENTE", "Um ou mais assentos não pertencem ao bloqueio.", 409);
+        if (assentos.some((item) => item.estado !== ESTADO_ASSENTO.BLOQUEADO || item.bloqueioAtualId !== bloqueioId)) {
+            throw erro(CODIGOS_ERRO.ESTADO_INCONSISTENTE, "Um ou mais assentos não pertencem ao bloqueio.", 409);
         }
 
         const faixas = await reservasRepository.buscarFaixasPreco(tx, bloqueio.sessaoId);
@@ -93,11 +97,11 @@ export async function confirmarReserva(bloqueioId, compradorId, dados, chaveIdem
             const faixa = precos.get(item.assento.setorId);
 
             if (!faixa) {
-                throw erro("PRECO_NAO_ENCONTRADO", "Preço não encontrado para um dos assentos.", 409);
+                throw erro(CODIGOS_ERRO.PRECO_NAO_ENCONTRADO, "Preço não encontrado para um dos assentos.", 409);
             }
 
             if (faixa.vigenteDe > agora || (faixa.vigenteAte && faixa.vigenteAte <= agora)) {
-                throw erro("PRECO_FORA_DA_VIGENCIA", "A faixa de preço não está vigente.", 409);
+                throw erro(CODIGOS_ERRO.PRECO_FORA_DA_VIGENCIA, "A faixa de preço não está vigente.", 409);
             }
 
             totalCentavos += Math.round(Number(faixa.valor) * 100);
@@ -112,7 +116,7 @@ export async function confirmarReserva(bloqueioId, compradorId, dados, chaveIdem
         const resultado = await reservasRepository.venderAssentos(tx, bloqueio.sessaoId, bloqueioId, reservaCriada.id);
 
         if (resultado.count !== assentos.length) {
-            throw erro("CONFLITO_ASSENTOS", "Não foi possível confirmar todos os assentos.", 409);
+            throw erro(CODIGOS_ERRO.CONFLITO_ASSENTOS, "Não foi possível confirmar todos os assentos.", 409);
         }
 
         await reservasRepository.confirmarBloqueio(tx, bloqueioId, chaveIdempotencia);
@@ -130,7 +134,7 @@ export async function consultarReserva(id, compradorId) {
         const reserva = await reservasRepository.buscarReserva(tx, id, compradorId);
 
         if (!reserva) {
-            throw erro("RESERVA_NAO_ENCONTRADA", "Reserva não encontrada.", 404);
+            throw erro(CODIGOS_ERRO.RESERVA_NAO_ENCONTRADA, "Reserva não encontrada.", 404);
         }
 
         return respostaReserva(reserva);
@@ -142,7 +146,7 @@ export async function cancelarReserva(id, compradorId) {
         const inicial = await reservasRepository.buscarReserva(tx, id, compradorId);
 
         if (!inicial) {
-            throw erro("RESERVA_NAO_ENCONTRADA", "Reserva não encontrada.", 404);
+            throw erro(CODIGOS_ERRO.RESERVA_NAO_ENCONTRADA, "Reserva não encontrada.", 404);
         }
 
         const sessaoId = inicial.bloqueioOrigem.sessaoId;
@@ -152,11 +156,11 @@ export async function cancelarReserva(id, compradorId) {
         const reserva = await reservasRepository.buscarReserva(tx, id, compradorId);
 
         if (!reserva) {
-            throw erro("RESERVA_NAO_ENCONTRADA", "Reserva não encontrada.", 404);
+            throw erro(CODIGOS_ERRO.RESERVA_NAO_ENCONTRADA, "Reserva não encontrada.", 404);
         }
 
         if (reserva.canceladaEm) {
-            throw erro("RESERVA_JA_CANCELADA", "A reserva já foi cancelada.", 409);
+            throw erro(CODIGOS_ERRO.RESERVA_JA_CANCELADA, "A reserva já foi cancelada.", 409);
         }
 
         const sessao = await tx.sessao.findUnique({
@@ -167,20 +171,20 @@ export async function cancelarReserva(id, compradorId) {
             }
         });
 
-        if (!sessao || sessao.inicioEm <= new Date() || sessao.situacao === "REALIZADA") {
-            throw erro("CANCELAMENTO_INDISPONIVEL", "Não é possível cancelar após o início da sessão.", 409);
+        if (!sessao || sessao.inicioEm <= new Date() || sessao.situacao === SITUACAO_SESSAO.REALIZADA) {
+            throw erro(CODIGOS_ERRO.CANCELAMENTO_INDISPONIVEL, "Não é possível cancelar após o início da sessão.", 409);
         }
 
         const quantidade = reserva.assentosAtuais.length;
 
         if (quantidade === 0) {
-            throw erro("RESERVA_SEM_ASSENTOS", "A reserva não possui assentos vendidos.", 409);
+            throw erro(CODIGOS_ERRO.RESERVA_SEM_ASSENTOS, "A reserva não possui assentos vendidos.", 409);
         }
 
         const resultado = await reservasRepository.liberarAssentos(tx, sessaoId, id);
 
         if (resultado.count !== quantidade) {
-            throw erro("ESTADO_INCONSISTENTE", "Não foi possível liberar todos os assentos.", 409);
+            throw erro(CODIGOS_ERRO.ESTADO_INCONSISTENTE, "Não foi possível liberar todos os assentos.", 409);
         }
 
         await reservasRepository.marcarCancelada(tx, id);

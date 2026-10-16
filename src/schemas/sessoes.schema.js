@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { SITUACAO_SESSAO } from "../constants/session-status.js";
 
-const situacoesSessao = ["AGENDADA", "VENDAS_ABERTAS", "ESGOTADA", "REALIZADA", "CANCELADA"];
+const situacoesSessao = Object.values(SITUACAO_SESSAO);
 
 const faixaPrecoSchema = z.object({
     setorId: z.uuid(),

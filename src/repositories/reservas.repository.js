@@ -1,4 +1,6 @@
 import { prisma } from "../lib/prisma.js";
+import { ESTADO_ASSENTO } from "../constants/seat-status.js";
+import { SITUACAO_BLOQUEIO } from "../constants/lock-status.js";
 
 const incluirReserva = {
     bloqueioOrigem: {
@@ -84,7 +86,7 @@ export const reservasRepository = {
         return tx.bloqueio.update({
             where: { id: bloqueioId },
             data: {
-                situacao: "CONFIRMADO",
+                situacao: SITUACAO_BLOQUEIO.CONFIRMADO,
                 chaveIdempotencia: chave
             }
         });
@@ -95,10 +97,10 @@ export const reservasRepository = {
             where: {
                 sessaoId,
                 bloqueioAtualId: bloqueioId,
-                estado: "BLOQUEADO"
+                estado: ESTADO_ASSENTO.BLOQUEADO
             },
             data: {
-                estado: "VENDIDO",
+                estado: ESTADO_ASSENTO.VENDIDO,
                 bloqueioAtualId: null,
                 reservaAtualId: reservaId,
                 versao: { increment: 1 }
@@ -120,10 +122,10 @@ export const reservasRepository = {
             where: {
                 sessaoId,
                 reservaAtualId: reservaId,
-                estado: "VENDIDO"
+                estado: ESTADO_ASSENTO.VENDIDO
             },
             data: {
-                estado: "LIVRE",
+                estado: ESTADO_ASSENTO.LIVRE,
                 reservaAtualId: null,
                 versao: { increment: 1 }
             }

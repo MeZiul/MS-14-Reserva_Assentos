@@ -4,14 +4,15 @@ import { listarSessoes, buscarSessaoPorId, criarSessao, atualizarSessao, remover
 import { bloqueiosRoutes } from "./bloqueios.routes.js";
 import { validar } from "../middlewares/validate.middleware.js";
 import { criarSessaoSchema, atualizarSessaoSchema, listarSessoesQuerySchema, sessaoIdParamsSchema } from "../schemas/sessoes.schema.js";
+import { autenticarPromotor } from "../middlewares/auth.middleware.js";
 
 const sessoesRoutes = Router();
 
 sessoesRoutes.get("/", validar({ query: listarSessoesQuerySchema }), listarSessoes);
-sessoesRoutes.post("/", validar({ body: criarSessaoSchema }), criarSessao);
+sessoesRoutes.post("/", autenticarPromotor, validar({ body: criarSessaoSchema }), criarSessao);
 sessoesRoutes.use("/:id", bloqueiosRoutes);
 sessoesRoutes.get("/:id", validar({ params: sessaoIdParamsSchema }), buscarSessaoPorId);
-sessoesRoutes.put("/:id", validar({ params: sessaoIdParamsSchema, body: atualizarSessaoSchema }), atualizarSessao);
-sessoesRoutes.delete("/:id", validar({ params: sessaoIdParamsSchema }), removerSessao);
+sessoesRoutes.put("/:id", autenticarPromotor, validar({ params: sessaoIdParamsSchema, body: atualizarSessaoSchema }), atualizarSessao);
+sessoesRoutes.delete("/:id", autenticarPromotor, validar({ params: sessaoIdParamsSchema }), removerSessao);
 
 export { sessoesRoutes };

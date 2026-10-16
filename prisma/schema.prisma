@@ -30,7 +30,7 @@ model Usuario {
   atualizadoEm    DateTime @updatedAt
 
   sessoesAuth Sessao_Autenticacao[]
-  conta       Conta?
+  conta       Conta[]
   locais      Local[]
   bloqueios   Bloqueio[]
   reservas    Reserva[]
@@ -56,20 +56,27 @@ model Sessao_Autenticacao {
 }
 
 model Conta {
-  id                       String    @id @default(uuid()) @db.Uuid
-  usuarioId                String    @unique @db.Uuid
-  idNaConta                String
-  provedorId               String
+  id         String @id @default(uuid()) @db.Uuid
+  usuarioId  String @db.Uuid
+  idNaConta  String
+  provedorId String
+
   tokenAcesso              String?
   tokenAtualizacao         String?
   tokenAcessoExpiraEm      DateTime?
   tokenAtualizacaoExpiraEm DateTime?
-  senha                    String?
-  criadoEm                 DateTime  @default(now())
-  atualizadoEm             DateTime  @updatedAt
+
+  escopo          String?
+  tokenIdentidade String?
+  senha           String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  @@unique([provedorId, idNaConta])
+  @@index([usuarioId])
   @@map("contas")
 }
 
@@ -79,7 +86,9 @@ model Verificacao {
   valor         String
   expiraEm      DateTime
   criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
 
+  @@index([identificador])
   @@map("verificacoes")
 }
 

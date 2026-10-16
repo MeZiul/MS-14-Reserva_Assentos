@@ -1,3 +1,5 @@
+import { CODIGOS_ERRO } from "./error-codes.js";
+
 export function erroNegocio(codigo, mensagem, status = 422, extras = {}) {
     const error = new Error(mensagem);
 
@@ -9,5 +11,5 @@ export function erroNegocio(codigo, mensagem, status = 422, extras = {}) {
 }
 
 export function conflitoAssentos(ids = []) {
-    throw erroNegocio("ASSENTOS_INDISPONIVEIS", "Um ou mais assentos não estão disponíveis.", 409, { assentosEmConflito: ids });
+    throw erroNegocio(CODIGOS_ERRO.ASSENTOS_INDISPONIVEIS, "Um ou mais assentos não estão disponíveis.", 409, { assentosEmConflito: ids });
 }

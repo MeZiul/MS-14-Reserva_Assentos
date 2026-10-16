@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { ESTADO_ASSENTO } from "../constants/seat-status.js";
+import { CODIGOS_ERRO } from "../utils/errors/error-codes.js";
 
 const BASE_URL = process.env.API_URL ?? "http://localhost:3000";
 
@@ -81,7 +83,7 @@ async function main() {
 
     const antes = await consultarAssento();
 
-    if (antes.estado !== "LIVRE") {
+    if (antes.estado !== ESTADO_ASSENTO.LIVRE) {
         throw new Error(`O assento precisa estar LIVRE. Estado: ${antes.estado}`);
     }
 
@@ -107,7 +109,7 @@ async function main() {
     console.log(`Conflitos: ${conflitos.length}`);
     console.log(`Estado do assento: ${depois.estado}`);
 
-    const aprovado = sucessos.length === 1 && conflitos.length === 1 && conflitos[0].dados.erro === "ASSENTOS_INDISPONIVEIS" && depois.estado === "BLOQUEADO";
+    const aprovado = sucessos.length === 1 && conflitos.length === 1 && conflitos[0].dados.erro === CODIGOS_ERRO.ASSENTOS_INDISPONIVEIS && depois.estado === ESTADO_ASSENTO.BLOQUEADO;
 
     if (!aprovado) {
         console.error("\nREPROVADO: concorrência inconsistente.");
