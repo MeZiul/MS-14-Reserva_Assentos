@@ -3,6 +3,8 @@ import express from "express";
 import { sessoesRoutes, locaisRoutes, mapasRoutes, usuariosRoutes } from "./routes/index.js";
 import { reservasRoutes, confirmacoesRoutes } from "./routes/reservas.routes.js";
 import { errorMiddleware } from "./middlewares/error.middleware.js";
+import { bloqueiosIndividuaisRoutes } from "./routes/bloqueios-individuais.routes.js";
+
 
 const app = express();
 
@@ -15,6 +17,7 @@ app.use("/v1/locais", mapasRoutes);
 app.use("/v1/usuarios", usuariosRoutes);
 
 // Reservas
+app.use("/v1/bloqueios", bloqueiosIndividuaisRoutes);
 app.use("/v1/bloqueios", confirmacoesRoutes);
 app.use("/v1/reservas", reservasRoutes);
 

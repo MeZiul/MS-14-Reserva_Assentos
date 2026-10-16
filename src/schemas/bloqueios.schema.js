@@ -27,3 +27,7 @@ export const criarBloqueioSchema = z.union([
 export const validarSessaoId = (params) => sessaoIdParamsSchema.parse(params);
 
 export const validarCriacaoBloqueio = (body) => criarBloqueioSchema.parse(body);
+
+export const bloqueioIdParamsSchema = z.object({
+  id: z.uuid()
+});

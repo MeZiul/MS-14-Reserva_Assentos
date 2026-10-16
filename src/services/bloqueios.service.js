@@ -1,7 +1,5 @@
 import { bloqueiosRepository } from "../repositories/index.js";
-
 import { assentoDisponivel, selecionarEspecificos, selecionarAdjacentes } from "../utils/bloqueio.utils.js";
-
 import { erroNegocio, conflitoAssentos } from "../utils/errors/bloqueios.errors.js";
 
 function validarSessaoParaVenda(sessao) {
@@ -113,10 +111,7 @@ export async function criarBloqueio(sessaoId, compradorId, dados) {
 
     assentosIds.sort();
 
-    const expiraEm = new Date(
-      agora.getTime() +
-      sessao.prazoBloqueioSegundos * 1000
-    );
+    const expiraEm = new Date(agora.getTime() + sessao.prazoBloqueioSegundos * 1000);
 
     const bloqueio = await bloqueiosRepository.criar(tx, {
       sessaoId,
@@ -145,4 +140,167 @@ export async function criarBloqueio(sessaoId, compradorId, dados) {
       expiraEm
     };
   });
+}
+
+function erroBloqueio(codigo, mensagem, status) {
+  return erroNegocio(codigo, mensagem, status);
+}
+
+function montarRespostaBloqueio(bloqueio) {
+  const agora = Date.now();
+
+  const segundosRestantes = bloqueio.situacao === "ATIVO" ? Math.max(0, Math.ceil((bloqueio.expiraEm.getTime() - agora) / 1000)) : 0;
+
+  return {
+    id: bloqueio.id,
+    sessaoId: bloqueio.sessaoId,
+    situacao: bloqueio.situacao,
+    criadoEm: bloqueio.criadoEm,
+    expiraEm: bloqueio.expiraEm,
+    segundosRestantes,
+    prorrogacoes: bloqueio.prorrogacoes,
+    maxProrrogacoes: bloqueio.sessao.maxProrrogacoes,
+    assentos: bloqueio.assentosAtuais.map((item) => ({
+      id: item.assentoId,
+      setorId: item.assento.setorId,
+      fileira: item.assento.fileira,
+      numero: item.assento.numero
+    }))
+  };
+}
+
+function verificarResultadoOperacao(resultado) {
+  if (resultado.erro) {
+    throw erroBloqueio(resultado.erro, resultado.mensagem, resultado.status);
+  }
+
+  return resultado.dados;
+}
+
+// Consulta individual do bloqueio
+export async function consultarBloqueio(bloqueioId, compradorId) {
+  const resultado = await bloqueiosRepository.executarTransacao(async (tx) => {
+    const identificacao = await bloqueiosRepository.buscarIdentificacaoBloqueio(tx, bloqueioId, compradorId);
+
+    if (!identificacao) {
+      return { erro: "BLOQUEIO_NAO_ENCONTRADO", mensagem: "Bloqueio não encontrado.", status: 404 };
+    }
+
+    await bloqueiosRepository.bloquearSessao(tx, identificacao.sessaoId);
+
+    // Expira bloqueios vencidos antes da consulta.
+    await bloqueiosRepository.liberarExpirados(tx, identificacao.sessaoId, new Date());
+
+    const bloqueio = await bloqueiosRepository.buscarBloqueioComSessao(tx, bloqueioId, compradorId);
+
+    return {
+      dados: montarRespostaBloqueio(bloqueio)
+    };
+  });
+
+  return verificarResultadoOperacao(resultado);
+}
+
+// Prorroga um bloqueio ativo
+export async function prorrogarBloqueio(bloqueioId, compradorId) {
+  const resultado = await bloqueiosRepository.executarTransacao(async (tx) => {
+    const identificacao = await bloqueiosRepository.buscarIdentificacaoBloqueio(tx, bloqueioId, compradorId);
+
+    if (!identificacao) {
+      return { erro: "BLOQUEIO_NAO_ENCONTRADO", mensagem: "Bloqueio não encontrado.", status: 404 };
+    }
+
+    await bloqueiosRepository.bloquearSessao(tx, identificacao.sessaoId);
+
+    const agora = new Date();
+
+    await bloqueiosRepository.liberarExpirados(tx, identificacao.sessaoId, agora);
+
+    const bloqueio = await bloqueiosRepository.buscarBloqueioComSessao(tx, bloqueioId, compradorId);
+
+    if (bloqueio.situacao === "EXPIRADO") {
+      return { erro: "BLOQUEIO_EXPIRADO", mensagem: "O bloqueio já expirou.", status: 410 };
+    }
+
+    if (bloqueio.situacao !== "ATIVO") {
+      return { erro: "BLOQUEIO_INDISPONIVEL", mensagem: "O bloqueio não está ativo.", status: 409 };
+    }
+
+    if (bloqueio.prorrogacoes >= bloqueio.sessao.maxProrrogacoes) {
+      return { erro: "LIMITE_PRORROGACOES", mensagem: "Limite de prorrogações atingido.", status: 409 };
+    }
+
+    if (bloqueio.sessao.situacao !== "VENDAS_ABERTAS" || bloqueio.sessao.inicioEm <= agora) {
+      return { erro: "SESSAO_INDISPONIVEL", mensagem: "A sessão não permite prorrogação.", status: 409 };
+    }
+
+    const novaExpiracao = new Date(bloqueio.expiraEm.getTime() + bloqueio.sessao.prazoBloqueioSegundos * 1000);
+
+    if (novaExpiracao >= bloqueio.sessao.inicioEm) {
+      return { erro: "PRAZO_INVALIDO", mensagem: "A prorrogação ultrapassa o início da sessão.", status: 409 };
+    }
+
+    await bloqueiosRepository.atualizarProrrogacao(tx, bloqueioId, novaExpiracao);
+
+    const atualizado = await bloqueiosRepository.buscarBloqueioComSessao(tx, bloqueioId, compradorId);
+
+    return {
+      dados: montarRespostaBloqueio(atualizado)
+    };
+  });
+
+  return verificarResultadoOperacao(resultado);
+}
+
+// Libera antecipadamente os assentos de um bloqueio
+export async function liberarBloqueio(bloqueioId, compradorId) {
+  const resultado = await bloqueiosRepository.executarTransacao(async (tx) => {
+    const identificacao = await bloqueiosRepository.buscarIdentificacaoBloqueio(tx, bloqueioId, compradorId);
+
+    if (!identificacao) {
+      return { erro: "BLOQUEIO_NAO_ENCONTRADO", mensagem: "Bloqueio não encontrado.", status: 404 };
+    }
+
+    await bloqueiosRepository.bloquearSessao(tx, identificacao.sessaoId);
+
+    await bloqueiosRepository.liberarExpirados(tx, identificacao.sessaoId, new Date());
+
+    const bloqueio = await bloqueiosRepository.buscarBloqueioComSessao(tx, bloqueioId, compradorId);
+
+    if (bloqueio.situacao === "EXPIRADO") {
+      return { erro: "BLOQUEIO_EXPIRADO", mensagem: "O bloqueio já expirou.", status: 410 };
+    }
+
+    if (bloqueio.situacao !== "ATIVO") {
+      return { erro: "BLOQUEIO_INDISPONIVEL", mensagem: "O bloqueio não pode ser liberado.", status: 409 };
+    }
+
+    const quantidade = bloqueio.assentosAtuais.length;
+
+    if (quantidade === 0) {
+      return { erro: "BLOQUEIO_SEM_ASSENTOS", mensagem: "Nenhum assento vinculado ao bloqueio.", status: 409 };
+    }
+
+    // Valida a consistência antes da operação.
+    const inconsistentes = bloqueio.assentosAtuais.some((item) => item.estado !== "BLOQUEADO" || item.bloqueioAtualId !== bloqueioId);
+
+    if (inconsistentes) {
+      return { erro: "ESTADO_INCONSISTENTE", mensagem: "Assentos com estado inconsistente.", status: 409 };
+    }
+
+    const liberados = await bloqueiosRepository.liberarAssentosDoBloqueio(tx, identificacao.sessaoId, bloqueioId);
+
+    if (liberados.count !== quantidade) {
+      // Cessa a transação.
+      throw erroBloqueio("CONFLITO_ASSENTOS", "Não foi possível liberar todos os assentos.", 409);
+    }
+
+    await bloqueiosRepository.marcarLiberado(tx, bloqueioId);
+
+    await bloqueiosRepository.incrementarVersaoSessao(tx, identificacao.sessaoId);
+
+    return { dados: null };
+  });
+
+  return verificarResultadoOperacao(resultado);
 }

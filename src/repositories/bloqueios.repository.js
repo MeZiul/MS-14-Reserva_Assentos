@@ -126,5 +126,94 @@ export const bloqueiosRepository = {
       maxWait: 30000,
       timeout: 60000
     });
-  }
+  },
+
+  buscarBloqueioComSessao(tx, bloqueioId, compradorId) {
+    return tx.bloqueio.findFirst({
+      where: {
+        id: bloqueioId,
+        compradorId
+      },
+      include: {
+        sessao: {
+          select: {
+            id: true,
+            inicioEm: true,
+            situacao: true,
+            prazoBloqueioSegundos: true,
+            maxProrrogacoes: true
+          }
+        },
+        assentosAtuais: {
+          include: {
+            assento: {
+              select: {
+                id: true,
+                setorId: true,
+                fileira: true,
+                numero: true
+              }
+            }
+          }
+        }
+      }
+    });
+  },
+
+  buscarIdentificacaoBloqueio(tx, bloqueioId, compradorId) {
+    return tx.bloqueio.findFirst({
+      where: {
+        id: bloqueioId,
+        compradorId
+      },
+      select: {
+        id: true,
+        sessaoId: true
+      }
+    });
+  },
+
+  atualizarProrrogacao(tx, bloqueioId, novaExpiracao) {
+    return tx.bloqueio.update({
+      where: { id: bloqueioId },
+      data: {
+        expiraEm: novaExpiracao,
+        prorrogacoes: { increment: 1 }
+      }
+    });
+  },
+
+  marcarLiberado(tx, bloqueioId) {
+    return tx.bloqueio.update({
+      where: { id: bloqueioId },
+      data: {
+        situacao: "LIBERADO"
+      }
+    });
+  },
+
+  liberarAssentosDoBloqueio(tx, sessaoId, bloqueioId) {
+    return tx.assentoSessao.updateMany({
+      where: {
+        sessaoId,
+        bloqueioAtualId: bloqueioId,
+        estado: "BLOQUEADO"
+      },
+      data: {
+        estado: "LIVRE",
+        bloqueioAtualId: null,
+        versao: { increment: 1 }
+      }
+    });
+  },
+
+  incrementarVersaoSessao(tx, sessaoId) {
+    return tx.sessao.update({
+      where: { id: sessaoId },
+      data: {
+        versao: { increment: 1 }
+      }
+    });
+  },
+
 };
