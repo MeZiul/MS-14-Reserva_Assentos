@@ -1,18 +1,9 @@
 import "dotenv/config";
 
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../generated/prisma/index.js";
+import { prisma } from "../src/lib/prisma.js";
 import { PAPEIS_USUARIO } from "../src/constants/roles.js";
 import { SITUACAO_SESSAO } from "../src/constants/session-status.js";
 import { ESTADO_ASSENTO } from "../src/constants/seat-status.js";
-
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL,
-});
-
-const prisma = new PrismaClient({
-  adapter,
-});
 
 async function main() {
   console.log("Iniciando o seed do banco de dados...");
