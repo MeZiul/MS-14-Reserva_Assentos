@@ -55,7 +55,7 @@ class SessoesRepository extends BaseRepository {
 
     const skip = (pagina - 1) * limite;
 
-    const [totalDocs, docs] = await this.prisma.$transaction([
+    const [totalDocs, docs] = await Promise.all([
       this.db.count({ where }),
 
       this.db.findMany({
