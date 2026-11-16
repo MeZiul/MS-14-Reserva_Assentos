@@ -6,6 +6,7 @@ import { auth } from "./config/auth.js";
 import { sessoesRoutes, locaisRoutes, mapasRoutes, usuariosRoutes } from "./routes/index.js";
 import { reservasRoutes, confirmacoesRoutes } from "./routes/reservas.routes.js";
 import { bloqueiosIndividuaisRoutes } from "./routes/bloqueios-individuais.routes.js";
+import { chavesRoutes } from "./routes/chaves.routes.js";
 import { errorMiddleware } from "./middlewares/error.middleware.js";
 
 const app = express();
@@ -31,6 +32,8 @@ app.use("/v1/bloqueios", confirmacoesRoutes);
 app.use("/v1/bloqueios", bloqueiosIndividuaisRoutes);
 
 app.use("/v1/reservas", reservasRoutes);
+
+app.use("/v1/chaves", chavesRoutes);
 
 // Tratamento de erros.
 app.use(errorMiddleware);

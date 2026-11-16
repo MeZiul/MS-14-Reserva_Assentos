@@ -19,6 +19,33 @@ enum Papel {
   PROMOTOR
 }
 
+enum EscopoChaveApi {
+  LEITURA
+  LEITURA_ESCRITA
+}
+
+model ChaveApi {
+  id      String         @id @default(uuid()) @db.Uuid
+  donoId  String         @db.Uuid
+  hash    String         @unique
+  prefixo String
+  nome    String
+  escopo  EscopoChaveApi @default(LEITURA)
+
+  ativa         Boolean   @default(true)
+  criadoEm      DateTime  @default(now())
+  ultimoUsoEm   DateTime?
+  revogadaEm    DateTime?
+  revogadaPorId String?   @db.Uuid
+
+  dono        Usuario  @relation("ChavesDoUsuario", fields: [donoId], references: [id])
+  revogadaPor Usuario? @relation("ChavesRevogadas", fields: [revogadaPorId], references: [id])
+
+  @@index([donoId])
+  @@index([revogadaPorId])
+  @@map("chaves_api")
+}
+
 model Usuario {
   id              String   @id @default(uuid()) @db.Uuid
   nome            String
@@ -29,11 +56,13 @@ model Usuario {
   criadoEm        DateTime @default(now())
   atualizadoEm    DateTime @updatedAt
 
-  sessoesAuth Sessao_Autenticacao[]
-  conta       Conta[]
-  locais      Local[]
-  bloqueios   Bloqueio[]
-  reservas    Reserva[]
+  sessoesAuth     Sessao_Autenticacao[]
+  conta           Conta[]
+  locais          Local[]
+  bloqueios       Bloqueio[]
+  reservas        Reserva[]
+  chavesApi       ChaveApi[]            @relation("ChavesDoUsuario")
+  chavesRevogadas ChaveApi[]            @relation("ChavesRevogadas")
 
   @@map("usuarios")
 }
