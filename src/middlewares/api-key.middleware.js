@@ -2,7 +2,7 @@ import { prisma } from "../lib/prisma.js";
 import { hashChaveApi, validarFormatoChaveApi } from "../utils/hash-api-key.js";
 import { CODIGOS_ERRO } from "../utils/errors/error-codes.js";
 
-// Extrai a credencial Bearer do cabeçalho Authorization
+//Extrai a chave enviada no cabeçalho Authorization com formato esperado sendo: Authorization: Bearer ws14_<segredo>
 function extrairChave(req) {
     const authorization = req.headers.authorization;
 
@@ -13,11 +13,12 @@ function extrairChave(req) {
     return match ? match[1] : null;
 }
 
-// Autentica um sistema consumidor utilizando sua chave de API.
+// Autentica a requisição utilizando uma chave de API
 export async function autenticarChaveApi(req, res, next) {
     try {
         const chave = extrairChave(req);
 
+        // 1. Valida o formato da credencial.
         if (!chave || !validarFormatoChaveApi(chave)) {
             return res.status(401).json({
                 erro: CODIGOS_ERRO.NAO_AUTENTICADO,
@@ -25,7 +26,10 @@ export async function autenticarChaveApi(req, res, next) {
             });
         }
 
+        // 2. Calcula o hash da chave recebida.
         const hash = hashChaveApi(chave);
+
+        // 3. Consulta a credencial e seu proprietário.
         const registro = await prisma.chaveApi.findUnique({
             where: { hash },
             include: {
@@ -40,24 +44,16 @@ export async function autenticarChaveApi(req, res, next) {
             }
         });
 
-        if (!registro || !registro.ativa || registro.revogadaEm !== null) {
+        // 4. Verifica se a credencial existe e está ativa
+        if (!registro || !registro.ativa || registro.revogadaEm !== null || !registro.dono) {
             return res.status(401).json({
                 erro: CODIGOS_ERRO.NAO_AUTENTICADO,
                 mensagem: "Chave de API inválida ou revogada"
             });
         }
 
-        // Identifica o usuário proprietário da chave e mantém compatibilidade com os controllers existentes.
-        req.usuario = registro.dono;
-
-        req.chaveApi = {
-            id: registro.id,
-            escopo: registro.escopo,
-            donoId: registro.donoId
-        };
-
-        // Registra a última utilização da credencial
-        await prisma.chaveApi.updateMany({
+        // 5. Atualiza o último uso somente se a chave continuar ativa no momento da atualização
+        const resultado = await prisma.chaveApi.updateMany({
             where: {
                 id: registro.id,
                 ativa: true,
@@ -68,13 +64,32 @@ export async function autenticarChaveApi(req, res, next) {
             }
         });
 
+        // 6. Se a chave foi revogada durante a validação, não autoriza a requisição
+        if (resultado.count !== 1) {
+            return res.status(401).json({
+                erro: CODIGOS_ERRO.NAO_AUTENTICADO,
+                mensagem: "Chave de API inválida ou revogada"
+            });
+        }
+
+        // 7. Somente agora identifica o usuário autenticado.
+        req.usuario = registro.dono;
+
+        req.chaveApi = {
+            id: registro.id,
+            escopo: registro.escopo,
+            donoId: registro.donoId
+        };
+
         return next();
     } catch (error) {
         return next(error);
     }
 }
 
-// Autoriza operações conforme o escopo da chave.
+// Verifica se a API Key possui o escopo necessário
+// LEITURA: permite somente consultas
+// LEITURA_ESCRITA: permite consultas e operações de escrita, respeitando também o papel do usuário
 export function autorizarEscopoChaveApi(escopoNecessario) {
     return (req, res, next) => {
         if (!req.chaveApi) {
