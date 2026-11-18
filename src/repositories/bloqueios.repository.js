@@ -148,11 +148,34 @@ export const bloqueiosRepository = {
   },
 
   // Executa operações em uma transação Prisma 
-  executarTransacao(callback) {
-    return prisma.$transaction(callback, {
-      maxWait: 30000,
-      timeout: 60000
-    });
+
+  async executarTransacao(callback) {
+    const MAX_TENTATIVAS = 3;
+
+    for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
+      try {
+        return await prisma.$transaction(callback, {
+          maxWait: 30000,
+          timeout: 60000
+        });
+      } catch (error) {
+        const falhaAoIniciar =
+          error.code === "P2028" &&
+          error.message?.includes("Unable to start a transaction");
+
+        // Não repete erros de negócio, transações expiradas ou falhas de outra natureza
+        if (!falhaAoIniciar || tentativa === MAX_TENTATIVAS) throw error;
+
+        // Pequeno intervalo antes de tentar adquirir uma nova transação
+        const atraso = 200 * tentativa;
+
+        console.warn(`Transação indisponível ` + `Tentativa ${tentativa}/${MAX_TENTATIVAS}`);
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, atraso)
+        );
+      }
+    }
   },
 
   // Consulta os detalhes de um bloqueio 

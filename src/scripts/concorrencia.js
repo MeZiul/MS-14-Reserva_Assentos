@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { ESTADO_ASSENTO } from "../constants/seat-status.js";
 import { CODIGOS_ERRO } from "../utils/errors/error-codes.js";
 
@@ -9,6 +10,8 @@ const ASSENTO_ID = process.env.TESTE_ASSENTO_ID;
 
 const TOKEN_A = process.env.TESTE_TOKEN_A;
 const TOKEN_B = process.env.TESTE_TOKEN_B;
+
+const TOTAL_REQUISICOES = Number(process.env.TESTE_TOTAL_REQUISICOES ?? 50);
 
 function validarConfiguracao() {
     const obrigatorias = {
@@ -25,11 +28,17 @@ function validarConfiguracao() {
     }
 
     if (TOKEN_A === TOKEN_B) {
-        throw new Error("Utilize tokens de compradores diferentes.");
+        throw new Error("Utilize tokens de compradores diferentes");
+    }
+
+    if (!Number.isInteger(TOTAL_REQUISICOES) || TOTAL_REQUISICOES < 2 || TOTAL_REQUISICOES > 500) {
+        throw new Error("TESTE_TOTAL_REQUISICOES deve estar entre 2 e 500");
     }
 }
 
-async function bloquear(nome, token) {
+// Envia uma tentativa de bloqueio
+// Cada requisição recebe uma chave própria, assim, nenhuma tentativa é confundida com uma repetição idempotente.
+async function bloquear(numero, token) {
     const inicio = performance.now();
 
     const resposta = await fetch(
@@ -38,7 +47,8 @@ async function bloquear(nome, token) {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Idempotency-Key": randomUUID()
             },
             body: JSON.stringify({
                 assentosIds: [ASSENTO_ID]
@@ -49,18 +59,19 @@ async function bloquear(nome, token) {
     const dados = await resposta.json();
 
     return {
-        comprador: nome,
+        tentativa: numero,
         status: resposta.status,
         duracaoMs: Math.round(performance.now() - inicio),
         dados
     };
 }
 
+// Consulta o estado atual do assento
 async function consultarAssento() {
     const resposta = await fetch(`${BASE_URL}/v1/sessoes/${SESSAO_ID}/assentos`);
 
     if (!resposta.ok) {
-        throw new Error(`Consulta falhou: HTTP ${resposta.status}`);
+        throw new Error(`Consulta do mapa falhou: HTTP ${resposta.status}`);
     }
 
     const mapa = await resposta.json();
@@ -80,44 +91,102 @@ async function main() {
     console.log("\n=== TESTE DE CONCORRÊNCIA ===");
     console.log(`Sessão: ${SESSAO_ID}`);
     console.log(`Assento: ${ASSENTO_ID}`);
+    console.log(`Requisições simultâneas: ${TOTAL_REQUISICOES}`);
 
+    // Verifica a condição inicial
     const antes = await consultarAssento();
 
     if (antes.estado !== ESTADO_ASSENTO.LIVRE) {
         throw new Error(`O assento precisa estar LIVRE. Estado: ${antes.estado}`);
     }
 
-    console.log("\nDisparando duas requisições simultâneas...");
+    // Monta todas as requisições antes de iniciar a execução
+    const tarefas = Array.from(
+        { length: TOTAL_REQUISICOES },
+        (_, indice) => {
+            const numero = indice + 1;
 
-    const resultados = await Promise.all([bloquear("Comprador A", TOKEN_A), bloquear("Comprador B", TOKEN_B)]);
+            // Alterna entre dois compradores
+            const token = indice % 2 === 0 ? TOKEN_A : TOKEN_B;
 
-    for (const resultado of resultados) {
-        console.log(`\n${resultado.comprador}`);
-        console.log(`HTTP: ${resultado.status}`);
-        console.log(`Tempo: ${resultado.duracaoMs} ms`);
-        console.log("Resposta:", JSON.stringify(resultado.dados));
-    }
+            return () => bloquear(numero, token);
+        }
+    );
 
+    console.log("\nDisparando requisições simultâneas...");
+
+    const inicioGeral = performance.now();
+
+    // allSettled mantém o resultado de todas as tentativas, inclusive falhas de rede
+    const execucoes = await Promise.allSettled(tarefas.map((tarefa) => tarefa()));
+
+    const duracaoTotal = Math.round(performance.now() - inicioGeral);
+
+    const resultados = execucoes
+        .filter((item) => item.status === "fulfilled")
+        .map((item) => item.value);
+
+    const falhasRede = execucoes.filter((item) => item.status === "rejected");
+
+    // Classifica as respostas
     const sucessos = resultados.filter((item) => item.status === 201);
 
     const conflitos = resultados.filter((item) => item.status === 409);
 
+    const conflitosValidos = conflitos.filter((item) => item.dados.erro === CODIGOS_ERRO.ASSENTOS_INDISPONIVEIS);
+
+    const inesperados = resultados.filter((item) => item.status !== 201 && item.status !== 409);
+
+    // Exibe o resultado de cada tentativa.
+    console.table(resultados.map((item) => ({
+        tentativa: item.tentativa,
+        status: item.status,
+        duracaoMs: item.duracaoMs,
+        bloqueioId:
+            item.status === 201
+                ? item.dados.id
+                : "-"
+    }))
+    );
+
     const depois = await consultarAssento();
 
     console.log("\n=== RESULTADO FINAL ===");
+    console.log(`Total: ${TOTAL_REQUISICOES}`);
     console.log(`Sucessos: ${sucessos.length}`);
     console.log(`Conflitos: ${conflitos.length}`);
-    console.log(`Estado do assento: ${depois.estado}`);
+    console.log(`Conflitos válidos: ${conflitosValidos.length}`);
+    console.log(`Respostas inesperadas: ${inesperados.length}`);
+    console.log(`Falhas de rede: ${falhasRede.length}`);
+    console.log(`Duração total: ${duracaoTotal} ms`);
+    console.log(`Estado final do assento: ${depois.estado}`);
 
-    const aprovado = sucessos.length === 1 && conflitos.length === 1 && conflitos[0].dados.erro === CODIGOS_ERRO.ASSENTOS_INDISPONIVEIS && depois.estado === ESTADO_ASSENTO.BLOQUEADO;
+    // Exatamente uma operação pode vencer
+    const aprovado =
+        sucessos.length === 1 &&
+        conflitos.length === TOTAL_REQUISICOES - 1 &&
+        conflitosValidos.length === conflitos.length &&
+        inesperados.length === 0 &&
+        falhasRede.length === 0 &&
+        depois.estado === ESTADO_ASSENTO.BLOQUEADO;
 
     if (!aprovado) {
-        console.error("\nREPROVADO: concorrência inconsistente.");
+        console.error("\nREPROVADO: resultado de concorrência inconsistente.");
+
+        for (const item of inesperados) {
+            console.error(`HTTP ${item.status}:`, JSON.stringify(item.dados));
+        }
+
+        for (const item of falhasRede) {
+            console.error("Falha de rede:", item.reason?.message);
+        }
+
         process.exitCode = 1;
         return;
     }
 
-    console.log("\nAPROVADO: somente um comprador obteve o assento.");
+    console.log("\nAPROVADO: somente uma requisição obteve o assento.");
+
     console.log(`Bloqueio vencedor: ${sucessos[0].dados.id}`);
 }
 

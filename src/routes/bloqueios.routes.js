@@ -2,12 +2,10 @@ import { Router } from "express";
 
 import { consultarAssentosController, criarBloqueioController } from "../controllers/bloqueios.controller.js";
 import { validar } from "../middlewares/validate.middleware.js";
-import { sessaoIdParamsSchema, criarBloqueioSchema } from "../schemas/bloqueios.schema.js";
+import { sessaoIdParamsSchema, criarBloqueioSchema, idempotenciaBloqueioHeadersSchema } from "../schemas/bloqueios.schema.js";
 import { autenticarCompradorEscrita } from "../middlewares/auth.middleware.js";
 
-const bloqueiosRoutes = Router({
-    mergeParams: true
-});
+const bloqueiosRoutes = Router({ mergeParams: true });
 
 // Identifica o comprador autenticado, tanto BetterAuth quanto API Key preenchem req.usuario, permitindo reutilizar o controller existente
 function identificarComprador(req, res, next) {
@@ -25,7 +23,8 @@ bloqueiosRoutes.get("/assentos", validar({ params: sessaoIdParamsSchema }), cons
 bloqueiosRoutes.post("/bloqueios", autenticarCompradorEscrita, identificarComprador,
     validar({
         params: sessaoIdParamsSchema,
-        body: criarBloqueioSchema
+        body: criarBloqueioSchema,
+        headers: idempotenciaBloqueioHeadersSchema
     }),
     criarBloqueioController
 );
