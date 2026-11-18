@@ -130,114 +130,144 @@ export async function criarBloqueio(sessaoId, compradorId, dados, chaveCriacao =
   // Calcula o hash antes de iniciar a transação
   const hashRequisicao = chaveCriacao ? gerarHashRequisicao(sessaoId, dados) : null;
 
-  return bloqueiosRepository.executarTransacao(async (tx) => {
+  try {
+    return await bloqueiosRepository.executarTransacao(async (tx) => {
 
-    // 1. Bloqueia a sessão para serializar operações concorrentes
-    const existe = await bloqueiosRepository.bloquearSessao(tx, sessaoId);
+      // 1. Bloqueia a sessão para serializar operações concorrentes
+      const existe = await bloqueiosRepository.bloquearSessao(tx, sessaoId);
 
-    if (!existe) {
-      throw erroNegocio(CODIGOS_ERRO.SESSAO_NAO_ENCONTRADA, "Sessão não encontrada.", 404);
-    }
+      if (!existe) {
+        throw erroNegocio(CODIGOS_ERRO.SESSAO_NAO_ENCONTRADA, "Sessão não encontrada.", 404);
+      }
 
-    // 2. Verifica se a chave de criação já foi utilizada
-    if (chaveCriacao) {
-      const existente = await bloqueiosRepository.buscarPorChaveCriacao(tx, compradorId, chaveCriacao);
+      // 2. Verifica se a chave de criação já foi utilizada
+      if (chaveCriacao) {
+        const existente = await bloqueiosRepository.buscarPorChaveCriacao(tx, compradorId, chaveCriacao);
 
-      if (existente) {
+        if (existente) {
 
-        // Uma chave não pode representar operações diferentes
-        if (existente.hashRequisicao !== hashRequisicao) {
-          throw erroNegocio(CODIGOS_ERRO.IDEMPOTENCIA_CONFLITANTE, "A chave de idempotência já foi utilizada com outros dados.", 409);
+          // Uma chave não pode representar operações diferentes
+          if (existente.hashRequisicao !== hashRequisicao) {
+            throw erroNegocio(CODIGOS_ERRO.IDEMPOTENCIA_CONFLITANTE, "A chave de idempotência já foi utilizada com outros dados.", 409);
+          }
+
+          // Recupera os assentos selecionados originalmente
+          const assentosOriginais = existente.assentosCriacao;
+
+          if (!Array.isArray(assentosOriginais)) {
+            throw erroNegocio(CODIGOS_ERRO.ESTADO_INCONSISTENTE, "Não foi possível recuperar os dados originais do bloqueio.", 409);
+          }
+
+          // Retorna o resultado original sem modificar o banco
+          return {
+            id: existente.id,
+            sessaoId: existente.sessaoId,
+            situacao: SITUACAO_BLOQUEIO.ATIVO,
+            assentos: assentosOriginais,
+            expiraEm: existente.expiraEm
+          };
+        }
+      }
+
+      // 3. Consulta a sessão
+      const sessao = await bloqueiosRepository.buscarSessao(tx, sessaoId);
+
+      validarSessaoParaVenda(sessao);
+
+      const agora = new Date();
+
+      // 4. Libera bloqueios expirados
+      await bloqueiosRepository.liberarExpirados(tx, sessaoId, agora);
+
+      // 5. Consulta os assentos disponíveis
+      const assentos = await bloqueiosRepository.listarAssentos(tx, sessaoId);
+
+      let assentosIds;
+
+      // 6. Seleção de assentos específicos
+      if ("assentosIds" in dados) {
+        assentosIds = selecionarEspecificos(assentos, dados.assentosIds, agora);
+      } else {
+
+        // 7. Seleção de assentos adjacentes
+        const setorExiste = sessao.faixas.some((faixa) => faixa.setorId === dados.setorId);
+
+        if (!setorExiste) {
+          throw erroNegocio(CODIGOS_ERRO.SETOR_INVALIDO, "Setor não pertence à sessão.", 422);
         }
 
-        // Recupera os assentos selecionados originalmente
-        const assentosOriginais = existente.assentosCriacao;
+        assentosIds = selecionarAdjacentes(assentos, dados.quantidade, dados.setorId, agora);
+      }
 
-        if (!Array.isArray(assentosOriginais)) {
-          throw erroNegocio(CODIGOS_ERRO.ESTADO_INCONSISTENTE, "Não foi possível recuperar os dados originais do bloqueio.", 409);
-        }
+      assentosIds.sort();
 
-        // Retorna o resultado original sem modificar o banco
-        return {
-          id: existente.id,
-          sessaoId: existente.sessaoId,
+      // 8. Calcula o prazo de expiração
+      const expiraEm = new Date(agora.getTime() + sessao.prazoBloqueioSegundos * 1000);
+
+      // 9. Cria o registro do bloqueio
+      const bloqueio = await tx.bloqueio.create({
+        data: {
+          sessaoId,
+          compradorId,
+          expiraEm,
           situacao: SITUACAO_BLOQUEIO.ATIVO,
-          assentos: assentosOriginais,
-          expiraEm: existente.expiraEm
-        };
-      }
-    }
 
-    // 3. Consulta a sessão
-    const sessao = await bloqueiosRepository.buscarSessao(tx, sessaoId);
+          chaveCriacao,
+          hashRequisicao,
 
-    validarSessaoParaVenda(sessao);
+          // Preserva a seleção original
+          assentosCriacao: assentosIds
+        }
+      });
 
-    const agora = new Date();
+      // 10. Marca os assentos como bloqueados.
+      const afetados = await bloqueiosRepository.marcarAssentos(tx, sessaoId, assentosIds, bloqueio.id);
 
-    // 4. Libera bloqueios expirados
-    await bloqueiosRepository.liberarExpirados(tx, sessaoId, agora);
-
-    // 5. Consulta os assentos disponíveis
-    const assentos = await bloqueiosRepository.listarAssentos(tx, sessaoId);
-
-    let assentosIds;
-
-    // 6. Seleção de assentos específicos
-    if ("assentosIds" in dados) {
-      assentosIds = selecionarEspecificos(assentos, dados.assentosIds, agora);
-    } else {
-
-      // 7. Seleção de assentos adjacentes
-      const setorExiste = sessao.faixas.some((faixa) => faixa.setorId === dados.setorId);
-
-      if (!setorExiste) {
-        throw erroNegocio(CODIGOS_ERRO.SETOR_INVALIDO, "Setor não pertence à sessão.", 422);
+      if (afetados !== assentosIds.length) {
+        conflitoAssentos(assentosIds);
       }
 
-      assentosIds = selecionarAdjacentes(assentos, dados.quantidade, dados.setorId, agora);
-    }
+      // 11. Incrementa a versão lógica da sessão.
+      await bloqueiosRepository.incrementarVersaoSessao(tx, sessaoId);
 
-    assentosIds.sort();
-
-    // 8. Calcula o prazo de expiração
-    const expiraEm = new Date(agora.getTime() + sessao.prazoBloqueioSegundos * 1000);
-
-    // 9. Cria o registro do bloqueio
-    const bloqueio = await tx.bloqueio.create({
-      data: {
+      // 12. Retorna o bloqueio criado.
+      return {
+        id: bloqueio.id,
         sessaoId,
-        compradorId,
-        expiraEm,
-        situacao: SITUACAO_BLOQUEIO.ATIVO,
-
-        chaveCriacao,
-        hashRequisicao,
-
-        // Preserva a seleção original
-        assentosCriacao: assentosIds
-      }
+        situacao: bloqueio.situacao,
+        assentos: assentosIds,
+        expiraEm
+      };
     });
-
-    // 10. Marca os assentos como bloqueados.
-    const afetados = await bloqueiosRepository.marcarAssentos(tx, sessaoId, assentosIds, bloqueio.id);
-
-    if (afetados !== assentosIds.length) {
-      conflitoAssentos(assentosIds);
+  } catch (erro) {
+    // Erros diferentes de P2002 continuam sendo propagados.
+    if (erro.code !== "P2002") {
+      throw erro;
     }
 
-    // 11. Incrementa a versão lógica da sessão.
-    await bloqueiosRepository.incrementarVersaoSessao(tx, sessaoId);
+    // A transação anterior falhou. Faz uma nova consulta fora dela para recuperar a operação concorrente
+    const existente = await bloqueiosRepository.executarTransacao((tx) => bloqueiosRepository.buscarPorChaveCriacao(tx, compradorId, chaveCriacao));
 
-    // 12. Retorna o bloqueio criado.
+    // Se nenhuma operação correspondente existir, preserva o erro original.
+    if (!existente) throw erro;
+
+    // A chave não pode ser reutilizada com outro conteúdo.
+    if (existente.hashRequisicao !== hashRequisicao) {
+      throw erroNegocio(CODIGOS_ERRO.IDEMPOTENCIA_CONFLITANTE, "A chave de idempotência já foi utilizada com outros dados.", 409);
+    }
+
+    if (!Array.isArray(existente.assentosCriacao)) {
+      throw erroNegocio(CODIGOS_ERRO.ESTADO_INCONSISTENTE, "Não foi possível recuperar os dados originais do bloqueio.", 409);
+    }
+
     return {
-      id: bloqueio.id,
-      sessaoId,
-      situacao: bloqueio.situacao,
-      assentos: assentosIds,
-      expiraEm
+      id: existente.id,
+      sessaoId: existente.sessaoId,
+      situacao: SITUACAO_BLOQUEIO.ATIVO,
+      assentos: existente.assentosCriacao,
+      expiraEm: existente.expiraEm
     };
-  });
+  }
 }
 
 function erroBloqueio(codigo, mensagem, status) {
