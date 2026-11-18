@@ -133,6 +133,25 @@ async function main() {
 
     const conflitos = resultados.filter((item) => item.status === 409);
 
+    const motivosConflito = {};
+
+    for (const conflito of conflitos) {
+        const codigo = conflito.dados?.erro ?? "SEM_CODIGO";
+
+        motivosConflito[codigo] = (motivosConflito[codigo] ?? 0) + 1;
+    }
+
+    console.log("\n=== MOTIVOS DOS CONFLITOS ===");
+
+    console.table(
+        Object.entries(motivosConflito).map(
+            ([codigo, quantidade]) => ({
+                codigo,
+                quantidade
+            })
+        )
+    );
+
     const conflitosValidos = conflitos.filter((item) => item.dados.erro === CODIGOS_ERRO.ASSENTOS_INDISPONIVEIS);
 
     const inesperados = resultados.filter((item) => item.status !== 201 && item.status !== 409);
