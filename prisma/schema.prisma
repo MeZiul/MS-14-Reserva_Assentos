@@ -286,23 +286,28 @@ enum SituacaoBloqueio {
 }
 
 model Bloqueio {
-  id                String           @id @default(uuid()) @db.Uuid
-  sessaoId          String           @db.Uuid
-  compradorId       String           @db.Uuid
-  chaveIdempotencia String?          @unique
-  criadoEm          DateTime         @default(now())
-  expiraEm          DateTime
-  prorrogacoes      Int              @default(0)
-  situacao          SituacaoBloqueio @default(ATIVO)
+  id                String  @id @default(uuid()) @db.Uuid
+  sessaoId          String  @db.Uuid
+  compradorId       String  @db.Uuid
+  chaveIdempotencia String? @unique
+  chaveCriacao      String?
+  hashRequisicao    String?
+  assentosCriacao   Json?
+
+  criadoEm     DateTime         @default(now())
+  expiraEm     DateTime
+  prorrogacoes Int              @default(0)
+  situacao     SituacaoBloqueio @default(ATIVO)
 
   sessao         Sessao          @relation(fields: [sessaoId], references: [id])
   comprador      Usuario         @relation(fields: [compradorId], references: [id])
   assentosAtuais AssentoSessao[] @relation("BloqueioAtual")
   reserva        Reserva?
 
+  @@unique([compradorId, chaveCriacao])
   @@index([sessaoId, situacao])
   @@index([compradorId, situacao])
-  @@index([expiraEm]) // usado na consulta de expiração
+  @@index([expiraEm])
   @@map("bloqueios")
 }
 

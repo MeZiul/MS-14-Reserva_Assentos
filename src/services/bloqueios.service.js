@@ -5,6 +5,7 @@ import { SITUACAO_SESSAO } from "../constants/session-status.js";
 import { ESTADO_ASSENTO } from "../constants/seat-status.js";
 import { SITUACAO_BLOQUEIO } from "../constants/lock-status.js";
 import { CODIGOS_ERRO } from "../utils/errors/error-codes.js";
+import { createHash } from "node:crypto";
 
 function validarSessaoParaVenda(sessao) {
   if (!sessao) {
@@ -80,30 +81,114 @@ export async function consultarDisponibilidade(sessaoId) {
     return montarDisponibilidade(sessao, assentos, agora);
   });
 }
+// Gera uma identificação determinística da requisição
+// Requisições com os mesmos dados produzem o mesmo hash,a ordem dos assentos informados não altera o resultado
+function gerarHashRequisicao(sessaoId, dados) {
+  let conteudo;
 
-export async function criarBloqueio(sessaoId, compradorId, dados) {
+  if ("assentosIds" in dados) {
+    conteudo = {
+      sessaoId,
+      tipo: "ESPECIFICO",
+      assentosIds: [...dados.assentosIds].sort()
+    };
+  } else {
+    conteudo = {
+      sessaoId,
+      tipo: "ADJACENTE",
+      setorId: dados.setorId,
+      quantidade: dados.quantidade
+    };
+  }
+
+  return createHash("sha256")
+    .update(JSON.stringify(conteudo))
+    .digest("hex");
+}
+
+function validarChaveCriacao(chaveCriacao) {
+  if (
+    typeof chaveCriacao !== "string" ||
+    chaveCriacao.length < 8 ||
+    chaveCriacao.length > 255 ||
+    chaveCriacao.trim() !== chaveCriacao
+  ) {
+    throw erroNegocio(
+      CODIGOS_ERRO.DADOS_INVALIDOS,
+      "Informe uma chave de idempotência válida.",
+      422
+    );
+  }
+}
+
+// Cria um bloqueio de assentos com suporte à idempotência
+// A chave de criação identifica a operação do comprador, repetições da mesma operação retornam o bloqueio original
+export async function criarBloqueio(sessaoId, compradorId, dados, chaveCriacao = null) {
+
+  validarChaveCriacao(chaveCriacao);
+
+  // Calcula o hash antes de iniciar a transação
+  const hashRequisicao = chaveCriacao ? gerarHashRequisicao(sessaoId, dados) : null;
+
   return bloqueiosRepository.executarTransacao(async (tx) => {
+
+    // 1. Bloqueia a sessão para serializar operações concorrentes
     const existe = await bloqueiosRepository.bloquearSessao(tx, sessaoId);
 
     if (!existe) {
       throw erroNegocio(CODIGOS_ERRO.SESSAO_NAO_ENCONTRADA, "Sessão não encontrada.", 404);
     }
 
+    // 2. Verifica se a chave de criação já foi utilizada
+    if (chaveCriacao) {
+      const existente = await bloqueiosRepository.buscarPorChaveCriacao(tx, compradorId, chaveCriacao);
+
+      if (existente) {
+
+        // Uma chave não pode representar operações diferentes
+        if (existente.hashRequisicao !== hashRequisicao) {
+          throw erroNegocio(CODIGOS_ERRO.IDEMPOTENCIA_CONFLITANTE, "A chave de idempotência já foi utilizada com outros dados.", 409);
+        }
+
+        // Recupera os assentos selecionados originalmente
+        const assentosOriginais = existente.assentosCriacao;
+
+        if (!Array.isArray(assentosOriginais)) {
+          throw erroNegocio(CODIGOS_ERRO.ESTADO_INCONSISTENTE, "Não foi possível recuperar os dados originais do bloqueio.", 409);
+        }
+
+        // Retorna o resultado original sem modificar o banco
+        return {
+          id: existente.id,
+          sessaoId: existente.sessaoId,
+          situacao: SITUACAO_BLOQUEIO.ATIVO,
+          assentos: assentosOriginais,
+          expiraEm: existente.expiraEm
+        };
+      }
+    }
+
+    // 3. Consulta a sessão
     const sessao = await bloqueiosRepository.buscarSessao(tx, sessaoId);
 
     validarSessaoParaVenda(sessao);
 
     const agora = new Date();
 
+    // 4. Libera bloqueios expirados
     await bloqueiosRepository.liberarExpirados(tx, sessaoId, agora);
 
+    // 5. Consulta os assentos disponíveis
     const assentos = await bloqueiosRepository.listarAssentos(tx, sessaoId);
 
     let assentosIds;
 
+    // 6. Seleção de assentos específicos
     if ("assentosIds" in dados) {
       assentosIds = selecionarEspecificos(assentos, dados.assentosIds, agora);
     } else {
+
+      // 7. Seleção de assentos adjacentes
       const setorExiste = sessao.faixas.some((faixa) => faixa.setorId === dados.setorId);
 
       if (!setorExiste) {
@@ -115,27 +200,36 @@ export async function criarBloqueio(sessaoId, compradorId, dados) {
 
     assentosIds.sort();
 
+    // 8. Calcula o prazo de expiração
     const expiraEm = new Date(agora.getTime() + sessao.prazoBloqueioSegundos * 1000);
 
-    const bloqueio = await bloqueiosRepository.criar(tx, {
-      sessaoId,
-      compradorId,
-      expiraEm
+    // 9. Cria o registro do bloqueio
+    const bloqueio = await tx.bloqueio.create({
+      data: {
+        sessaoId,
+        compradorId,
+        expiraEm,
+        situacao: SITUACAO_BLOQUEIO.ATIVO,
+
+        chaveCriacao,
+        hashRequisicao,
+
+        // Preserva a seleção original
+        assentosCriacao: assentosIds
+      }
     });
 
+    // 10. Marca os assentos como bloqueados.
     const afetados = await bloqueiosRepository.marcarAssentos(tx, sessaoId, assentosIds, bloqueio.id);
 
     if (afetados !== assentosIds.length) {
       conflitoAssentos(assentosIds);
     }
 
-    await tx.sessao.update({
-      where: { id: sessaoId },
-      data: {
-        versao: { increment: 1 }
-      }
-    });
+    // 11. Incrementa a versão lógica da sessão.
+    await bloqueiosRepository.incrementarVersaoSessao(tx, sessaoId);
 
+    // 12. Retorna o bloqueio criado.
     return {
       id: bloqueio.id,
       sessaoId,

@@ -4,6 +4,7 @@ import { SITUACAO_BLOQUEIO } from "../constants/lock-status.js";
 
 export const bloqueiosRepository = {
 
+  // Serializa as operações de uma mesma sessão
   async bloquearSessao(tx, sessaoId) {
     const resultado = await tx.$queryRaw`
       SELECT id
@@ -15,6 +16,7 @@ export const bloqueiosRepository = {
     return resultado.length > 0;
   },
 
+  // Consulta a sessão e suas faixas de preço
   buscarSessao(tx, sessaoId) {
     return tx.sessao.findUnique({
       where: { id: sessaoId },
@@ -25,6 +27,7 @@ export const bloqueiosRepository = {
     });
   },
 
+  // Lista os assentos e seus estados na sessão
   listarAssentos(tx, sessaoId) {
     return tx.assentoSessao.findMany({
       where: { sessaoId },
@@ -42,6 +45,7 @@ export const bloqueiosRepository = {
     });
   },
 
+  // Consulta um bloqueio pertencente ao comprador
   buscarBloqueio(tx, bloqueioId, compradorId) {
     return tx.bloqueio.findFirst({
       where: {
@@ -54,17 +58,36 @@ export const bloqueiosRepository = {
     });
   },
 
+  // Busca um bloqueio pela chave de criação
+  // Pode receber tanto o Prisma Client quanto o cliente de uma transação
+  buscarPorChaveCriacao(db, compradorId, chaveCriacao) {
+    return db.bloqueio.findUnique({
+      where: {
+        compradorId_chaveCriacao: {
+          compradorId,
+          chaveCriacao
+        }
+      }
+    });
+  },
+
+  // Cria um bloqueio preservando os dados necessários à idempotência
   criar(tx, dados) {
     return tx.bloqueio.create({
       data: {
         sessaoId: dados.sessaoId,
         compradorId: dados.compradorId,
         expiraEm: dados.expiraEm,
-        situacao: SITUACAO_BLOQUEIO.ATIVO
+        situacao: SITUACAO_BLOQUEIO.ATIVO,
+
+        chaveCriacao: dados.chaveCriacao,
+        hashRequisicao: dados.hashRequisicao,
+        assentosCriacao: dados.assentosCriacao
       }
     });
   },
 
+  //Bloqueia somente assentos que continuam livres
   async marcarAssentos(tx, sessaoId, ids, bloqueioId) {
     const resultado = await tx.assentoSessao.updateMany({
       where: {
@@ -83,6 +106,7 @@ export const bloqueiosRepository = {
     return resultado.count;
   },
 
+  // Libera bloqueios que ultrapassaram o prazo de expiração
   async liberarExpirados(tx, sessaoId, agora) {
     const expirados = await tx.bloqueio.findMany({
       where: {
@@ -123,13 +147,15 @@ export const bloqueiosRepository = {
     return ids.length;
   },
 
-  async executarTransacao(callback) {
+  // Executa operações em uma transação Prisma 
+  executarTransacao(callback) {
     return prisma.$transaction(callback, {
       maxWait: 30000,
       timeout: 60000
     });
   },
 
+  // Consulta os detalhes de um bloqueio 
   buscarBloqueioComSessao(tx, bloqueioId, compradorId) {
     return tx.bloqueio.findFirst({
       where: {
@@ -162,6 +188,7 @@ export const bloqueiosRepository = {
     });
   },
 
+  // Identifica o bloqueio e a sessão vinculada
   buscarIdentificacaoBloqueio(tx, bloqueioId, compradorId) {
     return tx.bloqueio.findFirst({
       where: {
@@ -175,6 +202,7 @@ export const bloqueiosRepository = {
     });
   },
 
+  // Prorroga o prazo de um bloqueio
   atualizarProrrogacao(tx, bloqueioId, novaExpiracao) {
     return tx.bloqueio.update({
       where: { id: bloqueioId },
@@ -185,6 +213,7 @@ export const bloqueiosRepository = {
     });
   },
 
+  // Marca um bloqueio como liberado
   marcarLiberado(tx, bloqueioId) {
     return tx.bloqueio.update({
       where: { id: bloqueioId },
@@ -194,6 +223,7 @@ export const bloqueiosRepository = {
     });
   },
 
+  // Libera os assentos associados ao bloqueio
   liberarAssentosDoBloqueio(tx, sessaoId, bloqueioId) {
     return tx.assentoSessao.updateMany({
       where: {
@@ -209,6 +239,7 @@ export const bloqueiosRepository = {
     });
   },
 
+  // Incrementa a versão lógica da sessão
   incrementarVersaoSessao(tx, sessaoId) {
     return tx.sessao.update({
       where: { id: sessaoId },
@@ -216,6 +247,5 @@ export const bloqueiosRepository = {
         versao: { increment: 1 }
       }
     });
-  },
-
+  }
 };
