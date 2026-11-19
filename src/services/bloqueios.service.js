@@ -6,6 +6,7 @@ import { ESTADO_ASSENTO } from "../constants/seat-status.js";
 import { SITUACAO_BLOQUEIO } from "../constants/lock-status.js";
 import { CODIGOS_ERRO } from "../utils/errors/error-codes.js";
 import { createHash } from "node:crypto";
+import { prisma } from "../lib/prisma.js";
 
 function validarSessaoParaVenda(sessao) {
   if (!sessao) {
@@ -121,6 +122,24 @@ function validarChaveCriacao(chaveCriacao) {
   }
 }
 
+function recuperarResultadoIdempotente(existente, hashRequisicao) {
+  if (existente.hashRequisicao !== hashRequisicao) {
+    throw erroNegocio(CODIGOS_ERRO.IDEMPOTENCIA_CONFLITANTE, "A chave de idempotência já foi utilizada com outros dados.", 409);
+  }
+
+  if (!Array.isArray(existente.assentosCriacao)) {
+    throw erroNegocio(CODIGOS_ERRO.ESTADO_INCONSISTENTE, "Não foi possível recuperar os assentos originais.", 409);
+  }
+
+  return {
+    id: existente.id,
+    sessaoId: existente.sessaoId,
+    situacao: existente.situacao,
+    assentos: existente.assentosCriacao,
+    expiraEm: existente.expiraEm
+  };
+}
+
 // Cria um bloqueio de assentos com suporte à idempotência
 // A chave de criação identifica a operação do comprador, repetições da mesma operação retornam o bloqueio original
 export async function criarBloqueio(sessaoId, compradorId, dados, chaveCriacao = null) {
@@ -129,109 +148,109 @@ export async function criarBloqueio(sessaoId, compradorId, dados, chaveCriacao =
 
   const hashRequisicao = gerarHashRequisicao(sessaoId, dados);
 
-  return bloqueiosRepository.executarTransacao(async (tx) => {
+  try {
+    return await bloqueiosRepository.executarTransacao(async (tx) => {
 
-    // 1. Bloqueia a sessão. Somente uma operação por sessão pode passar deste ponto por vez
-    const existe = await bloqueiosRepository.bloquearSessao(tx, sessaoId);
+      // 1. Bloqueia a sessão. Somente uma operação por sessão pode passar deste ponto por vez
+      const existe = await bloqueiosRepository.bloquearSessao(tx, sessaoId);
 
-    if (!existe) {
-      throw erroNegocio(CODIGOS_ERRO.SESSAO_NAO_ENCONTRADA, "Sessão não encontrada.", 404);
-    }
-
-    const agora = new Date();
-
-    // 2. Processa bloqueios vencidos antes de consultar a chave de idempotência
-    await bloqueiosRepository.liberarExpirados(tx, sessaoId, agora);
-
-    // 3. Verifica se a chave já foi utilizada
-    const existente = await bloqueiosRepository.buscarPorChaveCriacao(tx, compradorId, chaveCriacao);
-
-    if (existente) {
-      // A mesma chave não pode representar operações com dados diferentes
-      if (existente.hashRequisicao !== hashRequisicao) {
-        throw erroNegocio(CODIGOS_ERRO.IDEMPOTENCIA_CONFLITANTE, "A chave de idempotência já foi utilizada com outros dados.", 409);
+      if (!existe) {
+        throw erroNegocio(CODIGOS_ERRO.SESSAO_NAO_ENCONTRADA, "Sessão não encontrada.", 404);
       }
 
-      // Recupera os assentos do pedido original
-      const assentosOriginais = existente.assentosCriacao;
+      const agora = new Date();
 
-      if (!Array.isArray(assentosOriginais)) {
-        throw erroNegocio(CODIGOS_ERRO.ESTADO_INCONSISTENTE, "Não foi possível recuperar os assentos originais.", 409);
+      // 2. Processa bloqueios vencidos antes de consultar a chave de idempotência
+      await bloqueiosRepository.liberarExpirados(tx, sessaoId, agora);
+
+      // 3. Verifica se a chave já foi utilizada
+      const existente = await bloqueiosRepository.buscarPorChaveCriacao(tx, compradorId, chaveCriacao);
+
+      if (existente) {
+        return recuperarResultadoIdempotente(existente, hashRequisicao);
       }
 
-      // Retorna o estado real, sem criar outro bloqueio nem alterar os assentos
+      // 4. Consulta e valida a sessão
+      const sessao = await bloqueiosRepository.buscarSessao(tx, sessaoId);
+
+      validarSessaoParaVenda(sessao);
+
+      // 5. Consulta os assentos da sessão dentro da transação
+      const assentos = await bloqueiosRepository.listarAssentos(tx, sessaoId);
+
+      let assentosIds;
+
+      // 6. Seleciona os assentos solicitados
+      if ("assentosIds" in dados) {
+        assentosIds = selecionarEspecificos(assentos, dados.assentosIds, agora);
+      } else {
+        const setorExiste = sessao.faixas.some((faixa) => faixa.setorId === dados.setorId);
+
+        if (!setorExiste) {
+          throw erroNegocio(CODIGOS_ERRO.SETOR_INVALIDO, "Setor não pertence à sessão.", 422);
+        }
+
+        assentosIds = selecionarAdjacentes(assentos, dados.quantidade, dados.setorId, agora);
+      }
+
+      // Ordenação determinística
+      assentosIds.sort();
+
+      // 7. Calcula a expiração
+      const expiraEm = new Date(agora.getTime() + sessao.prazoBloqueioSegundos * 1000);
+
+      // 8. Cria o bloqueio
+      const bloqueio = await tx.bloqueio.create({
+        data: {
+          sessaoId,
+          compradorId,
+          expiraEm,
+          situacao: SITUACAO_BLOQUEIO.ATIVO,
+          chaveCriacao,
+          hashRequisicao,
+          assentosCriacao: assentosIds
+        }
+      });
+
+      // 9. Atualiza apenas assentos livres
+      const afetados = await bloqueiosRepository.marcarAssentos(tx, sessaoId, assentosIds, bloqueio.id);
+
+      // Se um único assento não puder ser bloqueado, toda a transação é revertida
+      if (afetados !== assentosIds.length) {
+        conflitoAssentos(assentosIds);
+      }
+
+      // 10. Incrementa a versão da sessão
+      await bloqueiosRepository.incrementarVersaoSessao(tx, sessaoId);
+
+      // 11. Retorna o bloqueio criado
       return {
-        id: existente.id,
-        sessaoId: existente.sessaoId,
-        situacao: existente.situacao,
-        assentos: assentosOriginais,
-        expiraEm: existente.expiraEm
-      };
-    }
-
-    // 4. Consulta e valida a sessão
-    const sessao = await bloqueiosRepository.buscarSessao(tx, sessaoId);
-
-    validarSessaoParaVenda(sessao);
-
-    // 5. Consulta os assentos da sessão dentro da transação
-    const assentos = await bloqueiosRepository.listarAssentos(tx, sessaoId);
-
-    let assentosIds;
-
-    // 6. Seleciona os assentos solicitados
-    if ("assentosIds" in dados) {
-      assentosIds = selecionarEspecificos(assentos, dados.assentosIds, agora);
-    } else {
-      const setorExiste = sessao.faixas.some((faixa) => faixa.setorId === dados.setorId);
-
-      if (!setorExiste) {
-        throw erroNegocio(CODIGOS_ERRO.SETOR_INVALIDO, "Setor não pertence à sessão.", 422);
-      }
-
-      assentosIds = selecionarAdjacentes(assentos, dados.quantidade, dados.setorId, agora);
-    }
-
-    // Ordenação determinística
-    assentosIds.sort();
-
-    // 7. Calcula a expiração
-    const expiraEm = new Date(agora.getTime() + sessao.prazoBloqueioSegundos * 1000);
-
-    // 8. Cria o bloqueio
-    const bloqueio = await tx.bloqueio.create({
-      data: {
+        id: bloqueio.id,
         sessaoId,
-        compradorId,
-        expiraEm,
-        situacao: SITUACAO_BLOQUEIO.ATIVO,
-        chaveCriacao,
-        hashRequisicao,
-        assentosCriacao: assentosIds
-      }
+        situacao: bloqueio.situacao,
+        assentos: assentosIds,
+        expiraEm
+      };
     });
 
-    // 9. Atualiza apenas assentos livres
-    const afetados = await bloqueiosRepository.marcarAssentos(tx, sessaoId, assentosIds, bloqueio.id);
+  } catch (error) {
 
-    // Se um único assento não puder ser bloqueado, toda a transação é revertida
-    if (afetados !== assentosIds.length) {
-      conflitoAssentos(assentosIds);
+    // Outros erros continuam sendo tratados normalmente
+    if (error.code !== "P2002") {
+      throw error;
     }
 
-    // 10. Incrementa a versão da sessão
-    await bloqueiosRepository.incrementarVersaoSessao(tx, sessaoId);
+    // A transação anterior falhou, consultamos novamente usando o Prisma Client, fora da transação encerrada
+    const existente = await bloqueiosRepository.buscarPorChaveCriacao(prisma, compradorId, chaveCriacao);
 
-    // 11. Retorna o bloqueio criado
-    return {
-      id: bloqueio.id,
-      sessaoId,
-      situacao: bloqueio.situacao,
-      assentos: assentosIds,
-      expiraEm
-    };
+    // Se não existe um bloqueio com essa chave, a violação de unicidade pode ter outra origem
+    if (!existente) {
+      throw error;
+    }
+
+    // Verifica se a chave pertence à mesma operação
+    return recuperarResultadoIdempotente(existente, hashRequisicao);
   }
-  );
 }
 
 function erroBloqueio(codigo, mensagem, status) {

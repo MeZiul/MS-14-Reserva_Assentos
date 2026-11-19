@@ -9,8 +9,16 @@ import { bloqueiosIndividuaisRoutes } from "./routes/bloqueios-individuais.route
 import { chavesRoutes } from "./routes/chaves.routes.js";
 import { errorMiddleware } from "./middlewares/error.middleware.js";
 
+import { registrarSwagger } from "./docs/swagger.js";
+
 const app = express();
 
+app.get("/", (req, res) => {
+    return res.redirect(302, "/docs");
+});
+
+// Documentação OpenAPI e Swagger UI.
+registrarSwagger(app);
 
 app.all("/api/auth/*splat", toNodeHandler(auth));
 

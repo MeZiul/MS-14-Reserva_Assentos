@@ -227,7 +227,11 @@ describe("Idempotência dos bloqueios", () => {
         expect(resultado.assentos).toEqual([ASSENTO_ID]);
 
         // O serviço devolve o resultado idempotente original
-        expect(resultado.situacao).toBe("ATIVO");
+        expect(resultado.situacao).toBe("EXPIRADO");
+        
+        expect(bloqueiosRepository.marcarAssentos).toHaveBeenCalledTimes(1);
+
+        expect(bloqueiosRepository.incrementarVersaoSessao).toHaveBeenCalledTimes(1);
 
         // Não deve tentar bloquear novamente
         expect(criarRegistroMock).toHaveBeenCalledTimes(1);

@@ -1,0 +1,1801 @@
+openapi: 3.0.3
+
+info:
+  title: WS-14 — API de Reserva de Assentos
+  version: 1.0.0
+  license:
+    name: ISC
+    url: https://opensource.org/licenses/ISC
+  description: |
+    Microserviço MS-A — API REST para gerenciamento de locais,
+    mapas, sessões, bloqueios temporários e reservas de assentos.
+
+    Autenticação:
+    - BetterAuth para sessões de usuários.
+    - API Key para integração com sistemas consumidores.
+
+    O MS-A é a única autoridade de escrita sobre o estado dos assentos.
+
+servers:
+  - url: /
+    description: Servidor atual
+
+tags:
+  - name: Autenticação
+    description: Cadastro, login, sessão e logout com BetterAuth
+
+  - name: Locais
+    description: Gerenciamento dos locais de eventos
+
+  - name: Mapas
+    description: Mapas, setores e assentos
+
+  - name: Sessões
+    description: Sessões e faixas de preço
+
+  - name: Assentos
+    description: Consulta de disponibilidade
+
+  - name: Bloqueios
+    description: Bloqueios temporários de assentos
+
+  - name: Reservas
+    description: Confirmação e cancelamento de reservas
+
+  - name: Chaves de API
+    description: Gerenciamento de credenciais B2B
+
+paths:
+
+  # ==========================================================
+  # AUTENTICAÇÃO — BETTERAUTH
+  # ==========================================================
+
+  /api/auth/sign-up/email:
+    post:
+      tags:
+        - Autenticação
+
+      summary: Cadastrar usuário
+      operationId: cadastrarUsuario
+
+      description: |
+        Realiza o cadastro de um novo usuário.
+
+        O BetterAuth gerencia a criação da conta
+        e o armazenamento seguro da senha.
+
+        Novos usuários recebem o papel COMPRADOR
+        por padrão.
+
+      security: []
+
+      requestBody:
+        required: true
+
+        content:
+          application/json:
+            schema:
+              type: object
+
+              required:
+                - name
+                - email
+                - password
+
+              properties:
+                name:
+                  type: string
+                  description: Nome do usuário
+
+                email:
+                  type: string
+                  format: email
+
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+
+            example:
+              name: João Silva
+              email: joao@example.com
+              password: "SenhaSegura123!"
+
+      responses:
+        "200":
+          description: Usuário cadastrado
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+        "400":
+          description: Dados inválidos ou cadastro não permitido
+
+        "422":
+          description: Erro de validação, quando aplicável
+
+  /api/auth/sign-in/email:
+    post:
+      tags:
+        - Autenticação
+
+      summary: Realizar login
+      operationId: loginUsuario
+
+      description: |
+        Autentica o usuário utilizando email e senha.
+
+        Após autenticação bem-sucedida, o BetterAuth
+        envia um cookie de sessão na resposta.
+
+        As próximas requisições autenticadas
+        devem enviar esse cookie.
+
+      security: []
+
+      requestBody:
+        required: true
+
+        content:
+          application/json:
+            schema:
+              type: object
+
+              required:
+                - email
+                - password
+
+              properties:
+                email:
+                  type: string
+                  format: email
+
+                password:
+                  type: string
+                  format: password
+
+            example:
+              email: joao@example.com
+              password: "SenhaSegura123!"
+
+      responses:
+        "200":
+          description: Login realizado com sucesso
+          headers:
+            Set-Cookie:
+              description: Cookie de sessão do BetterAuth
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+        "401":
+          description: Credenciais inválidas
+
+        "400":
+          description: Requisição inválida
+
+  /api/auth/get-session:
+    get:
+      tags:
+        - Autenticação
+
+      summary: Consultar sessão atual
+      operationId: consultarSessaoAutenticacao
+
+      description: |
+        Recupera a sessão do usuário autenticado.
+
+        A sessão é identificada pelo cookie
+        gerenciado pelo BetterAuth.
+
+        Quando não existe uma sessão válida,
+        o BetterAuth normalmente retorna null.
+
+      security:
+        - betterAuthCookie: []
+
+      responses:
+        "200":
+          description: |
+            Sessão consultada.
+            Pode retornar null se não houver sessão válida.
+
+          content:
+            application/json:
+              schema:
+                nullable: true
+                type: object
+                additionalProperties: true
+
+        "401":
+          description: Acesso não autorizado, quando aplicável
+
+  /api/auth/sign-out:
+    post:
+      tags:
+        - Autenticação
+
+      summary: Encerrar sessão
+      operationId: logoutUsuario
+
+      description: |
+        Encerra a sessão atual do usuário.
+
+        O BetterAuth invalida a sessão e atualiza
+        os cookies de autenticação.
+
+      security:
+        - betterAuthCookie: []
+
+      responses:
+        "200":
+          description: Sessão encerrada
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+        "401":
+          description: Usuário não autenticado, quando aplicável
+
+  # ============================================================
+  # LOCAIS
+  # ============================================================
+
+  /v1/locais:
+    post:
+      tags:
+        - Locais
+      summary: Cadastrar local
+      description: Cadastra um local pertencente ao promotor autenticado.
+      security:
+        - betterAuthCookie: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarLocal"
+            example:
+              nome: Teatro Municipal
+              endereco: Avenida Central, 100
+
+      responses:
+        "201":
+          description: Local cadastrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Local"
+              example:
+                id: "123e4567-e89b-42d3-a456-426614174000"
+                nome: Teatro Municipal
+                endereco: Avenida Central, 100
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+
+        "422":
+          $ref: "#/components/responses/DadosInvalidos"
+      operationId: criarLocal
+
+  # ============================================================
+  # MAPAS
+  # ============================================================
+
+  /v1/locais/{id}/mapas:
+    post:
+      tags:
+        - Mapas
+      summary: Criar mapa de assentos
+      description: |
+        Cria um mapa com setores e assentos.
+
+        Permite configurar fileiras, coordenadas, corredores
+        e atributos especiais.
+
+      security:
+        - betterAuthCookie: []
+
+      parameters:
+        - $ref: "#/components/parameters/LocalId"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarMapa"
+            example:
+              nome: Plateia Principal
+              setores:
+                - nome: Setor A
+                  ordemExibicao: 1
+                  categoria: VIP
+                  assentos:
+                    - fileira: A
+                      numero: 1
+                      x: 10
+                      y: 20
+                      atributo: PADRAO
+                      ordemNaFileira: 1
+                      grupoContiguo: 1
+                    - fileira: A
+                      numero: 2
+                      x: 20
+                      y: 20
+                      atributo: PADRAO
+                      ordemNaFileira: 2
+                      grupoContiguo: 1
+
+      responses:
+        "201":
+          description: Mapa criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mapa"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+        "422":
+          $ref: "#/components/responses/DadosInvalidos"
+      operationId: criarMapa
+
+  /v1/locais/{id}/mapas/{mapaId}:
+    get:
+      tags:
+        - Mapas
+      summary: Consultar mapa
+      description: Recupera o mapa com setores e assentos.
+
+      security:
+        - betterAuthCookie: []
+
+      parameters:
+        - $ref: "#/components/parameters/LocalId"
+        - $ref: "#/components/parameters/MapaId"
+
+      responses:
+        "200":
+          description: Mapa encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mapa"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+      operationId: consultarMapa
+
+  # ============================================================
+  # SESSÕES
+  # ============================================================
+
+  /v1/sessoes:
+    get:
+      tags:
+        - Sessões
+      summary: Listar sessões
+      description: Consulta pública com filtros e paginação.
+      security: []
+
+      parameters:
+        - name: localId
+          in: query
+          schema:
+            type: string
+            format: uuid
+
+        - name: de
+          in: query
+          schema:
+            type: string
+            format: date-time
+
+        - name: ate
+          in: query
+          schema:
+            type: string
+            format: date-time
+
+        - name: situacao
+          in: query
+          schema:
+            $ref: "#/components/schemas/SituacaoSessao"
+
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+
+        - name: limite
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+
+      responses:
+        "200":
+          description: Sessões encontradas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginacaoSessoes"
+
+        "422":
+          $ref: "#/components/responses/DadosInvalidos"
+      operationId: listarSessoes
+
+    post:
+      tags:
+        - Sessões
+      summary: Criar sessão
+      description: |
+        Cria uma sessão vinculada a um mapa.
+
+        Exige promotor autenticado e permissão de escrita.
+
+      security:
+        - betterAuthCookie: []
+        - apiKeyBearer: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarSessao"
+            example:
+              mapaId: "123e4567-e89b-42d3-a456-426614174001"
+              inicioEm: "2027-02-20T20:00:00Z"
+              situacao: VENDAS_ABERTAS
+              prazoBloqueioSegundos: 600
+              maxProrrogacoes: 2
+              faixas:
+                - setorId: "123e4567-e89b-42d3-a456-426614174002"
+                  valor: 50
+                  meiaEntrada: 25
+
+      responses:
+        "201":
+          description: Sessão criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sessao"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+
+        "422":
+          $ref: "#/components/responses/DadosInvalidos"
+      operationId: criarSessao
+
+  /v1/sessoes/{id}:
+    get:
+      tags:
+        - Sessões
+      summary: Consultar sessão
+      description: Recupera uma sessão pelo identificador.
+      security: []
+
+      parameters:
+        - $ref: "#/components/parameters/SessaoId"
+
+      responses:
+        "200":
+          description: Sessão encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sessao"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+      operationId: consultarSessao
+
+    put:
+      tags:
+        - Sessões
+      summary: Atualizar sessão
+      description: Atualiza uma sessão pertencente ao promotor.
+
+      security:
+        - betterAuthCookie: []
+        - apiKeyBearer: []
+
+      parameters:
+        - $ref: "#/components/parameters/SessaoId"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AtualizarSessao"
+            example:
+              situacao: VENDAS_ABERTAS
+
+      responses:
+        "200":
+          description: Sessão atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sessao"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+        "422":
+          $ref: "#/components/responses/DadosInvalidos"
+      operationId: atualizarSessao
+
+    delete:
+      tags:
+        - Sessões
+      summary: Remover sessão
+      description: Remove uma sessão agendada do promotor.
+
+      security:
+        - betterAuthCookie: []
+        - apiKeyBearer: []
+
+      parameters:
+        - $ref: "#/components/parameters/SessaoId"
+
+      responses:
+        "204":
+          description: Sessão removida
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+        "409":
+          $ref: "#/components/responses/Conflito"
+      operationId: removerSessao
+
+  # ============================================================
+  # DISPONIBILIDADE DOS ASSENTOS
+  # ============================================================
+
+  /v1/sessoes/{id}/assentos:
+    get:
+      tags:
+        - Assentos
+      summary: Consultar disponibilidade
+      description: |
+        Retorna o estado atual dos assentos de uma sessão.
+
+        Os estados possíveis são:
+        - LIVRE
+        - BLOQUEADO
+        - VENDIDO
+
+        Esta consulta não revela a identidade dos compradores.
+
+      security: []
+
+      parameters:
+        - $ref: "#/components/parameters/SessaoId"
+
+      responses:
+        "200":
+          description: Disponibilidade atual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapaDisponibilidade"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+      operationId: consultarDisponibilidade
+
+  # ============================================================
+  # BLOQUEIOS
+  # ============================================================
+
+  /v1/sessoes/{id}/bloqueios:
+    post:
+      tags:
+        - Bloqueios
+      summary: Criar bloqueio temporário
+      description: |
+        Bloqueia assentos específicos ou uma quantidade
+        de assentos adjacentes.
+
+        A operação é atômica:
+        todos os assentos são bloqueados ou nenhum deles.
+
+        Exige comprador autenticado e permissão de escrita.
+
+        O cabeçalho Idempotency-Key identifica a operação.
+
+      security:
+        - betterAuthCookie: []
+        - apiKeyBearer: []
+
+      parameters:
+        - $ref: "#/components/parameters/SessaoId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarBloqueio"
+            examples:
+              especificos:
+                summary: Selecionar assentos específicos
+                value:
+                  assentosIds:
+                    - "123e4567-e89b-42d3-a456-426614174002"
+
+              adjacentes:
+                summary: Solicitar assentos adjacentes
+                value:
+                  quantidade: 3
+                  setorId: "123e4567-e89b-42d3-a456-426614174003"
+
+      responses:
+        "201":
+          description: Bloqueio criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bloqueio"
+              example:
+                id: "123e4567-e89b-42d3-a456-426614174004"
+                sessaoId: "123e4567-e89b-42d3-a456-426614174005"
+                situacao: ATIVO
+                assentos:
+                  - "123e4567-e89b-42d3-a456-426614174002"
+                expiraEm: "2027-02-20T19:10:00Z"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+        "409":
+          description: Assentos indisponíveis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErroConflitoAssentos"
+              example:
+                erro: ASSENTOS_INDISPONIVEIS
+                mensagem: Um ou mais assentos não estão disponíveis.
+                assentosEmConflito:
+                  - "123e4567-e89b-42d3-a456-426614174002"
+
+        "422":
+          $ref: "#/components/responses/DadosInvalidos"
+      operationId: criarBloqueio
+
+  /v1/bloqueios/{id}:
+    get:
+      tags:
+        - Bloqueios
+      summary: Consultar bloqueio
+      description: |
+        Consulta um bloqueio pertencente ao comprador.
+
+        Retorna o tempo restante e os assentos vinculados.
+
+      security:
+        - betterAuthCookie: []
+        - apiKeyBearer: []
+
+      parameters:
+        - $ref: "#/components/parameters/BloqueioId"
+
+      responses:
+        "200":
+          description: Bloqueio encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bloqueio"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+      operationId: consultarBloqueio
+
+    delete:
+      tags:
+        - Bloqueios
+      summary: Liberar bloqueio
+      description: |
+        Libera antecipadamente os assentos de um bloqueio
+        pertencente ao comprador autenticado.
+
+      security:
+        - betterAuthCookie: []
+        - apiKeyBearer: []
+
+      parameters:
+        - $ref: "#/components/parameters/BloqueioId"
+
+      responses:
+        "204":
+          description: Bloqueio liberado
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+        "409":
+          $ref: "#/components/responses/Conflito"
+
+        "410":
+          $ref: "#/components/responses/BloqueioExpirado"
+      operationId: liberarBloqueio
+
+  /v1/bloqueios/{id}/prorrogar:
+    post:
+      tags:
+        - Bloqueios
+      summary: Prorrogar bloqueio
+      description: |
+        Prorroga o prazo de um bloqueio ativo,
+        respeitando o limite de prorrogações da sessão.
+
+      security:
+        - betterAuthCookie: []
+        - apiKeyBearer: []
+
+      parameters:
+        - $ref: "#/components/parameters/BloqueioId"
+
+      responses:
+        "200":
+          description: Bloqueio prorrogado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bloqueio"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+        "409":
+          $ref: "#/components/responses/Conflito"
+
+        "410":
+          $ref: "#/components/responses/BloqueioExpirado"
+      operationId: prorrogarBloqueio
+
+  # ============================================================
+  # CONFIRMAÇÃO E RESERVAS
+  # ============================================================
+
+  /v1/bloqueios/{id}/confirmar:
+    post:
+      tags:
+        - Reservas
+      summary: Confirmar reserva
+      description: |
+        Converte um bloqueio ativo em reserva definitiva.
+
+        Exige uma referência externa de pagamento
+        e uma chave de idempotência.
+
+        Não processa pagamentos diretamente.
+
+      security:
+        - betterAuthCookie: []
+        - apiKeyBearer: []
+
+      parameters:
+        - $ref: "#/components/parameters/BloqueioId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmarReserva"
+            example:
+              referenciaPagamento: pagamento-externo-001
+
+      responses:
+        "200":
+          description: Reserva confirmada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reserva"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+        "409":
+          $ref: "#/components/responses/Conflito"
+
+        "410":
+          $ref: "#/components/responses/BloqueioExpirado"
+
+        "422":
+          $ref: "#/components/responses/DadosInvalidos"
+      operationId: confirmarReserva
+
+  /v1/reservas/{id}:
+    get:
+      tags:
+        - Reservas
+      summary: Consultar reserva
+      description: |
+        Consulta uma reserva pertencente ao comprador autenticado.
+
+      security:
+        - betterAuthCookie: []
+        - apiKeyBearer: []
+
+      parameters:
+        - $ref: "#/components/parameters/ReservaId"
+
+      responses:
+        "200":
+          description: Reserva encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reserva"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+      operationId: consultarReserva
+
+    delete:
+      tags:
+        - Reservas
+      summary: Cancelar reserva
+      description: |
+        Cancela uma reserva confirmada e libera seus assentos.
+
+        A operação exige comprador autenticado
+        e permissão de escrita.
+
+      security:
+        - betterAuthCookie: []
+        - apiKeyBearer: []
+
+      parameters:
+        - $ref: "#/components/parameters/ReservaId"
+
+      responses:
+        "204":
+          description: Reserva cancelada
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+        "409":
+          $ref: "#/components/responses/Conflito"
+      operationId: cancelarReserva
+
+  # ============================================================
+  # CHAVES DE API
+  # ============================================================
+
+  /v1/chaves:
+    post:
+      tags:
+        - Chaves de API
+      summary: Criar chave de API
+      description: |
+        Cria uma chave vinculada ao usuário autenticado.
+
+        O segredo completo é retornado somente na criação.
+
+        Exige sessão BetterAuth.
+
+      security:
+        - betterAuthCookie: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarChave"
+            example:
+              nome: Sistema de Bilheteria
+              escopo: LEITURA_ESCRITA
+
+      responses:
+        "201":
+          description: Chave criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChaveCriada"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "422":
+          $ref: "#/components/responses/DadosInvalidos"
+      operationId: criarChaveApi
+
+    get:
+      tags:
+        - Chaves de API
+      summary: Listar chaves de API
+      description: |
+        Lista as chaves pertencentes ao usuário autenticado.
+
+        Não retorna o segredo nem o hash das chaves.
+
+      security:
+        - betterAuthCookie: []
+
+      responses:
+        "200":
+          description: Chaves encontradas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChaveApi"
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+      operationId: listarChavesApi
+
+  /v1/chaves/{id}:
+    delete:
+      tags:
+        - Chaves de API
+      summary: Revogar chave de API
+      description: |
+        Revoga uma chave pertencente ao usuário autenticado.
+
+        A chave não poderá ser utilizada novamente.
+
+      security:
+        - betterAuthCookie: []
+
+      parameters:
+        - $ref: "#/components/parameters/ChaveId"
+
+      responses:
+        "204":
+          description: Chave revogada
+
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+      operationId: revogarChaveApi
+
+# ============================================================
+# COMPONENTES REUTILIZÁVEIS
+# ============================================================
+
+components:
+
+  # ----------------------------------------------------------
+  # AUTENTICAÇÃO
+  # ----------------------------------------------------------
+
+  securitySchemes:
+    apiKeyBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: |
+        Chave de API criada em POST /v1/chaves.
+
+        Formato:
+        ws14_<segredo>
+
+    betterAuthCookie:
+      type: apiKey
+      in: cookie
+      name: better-auth.session_token
+      description: |
+        Sessão BetterAuth.
+
+        O nome do cookie pode variar conforme
+        a configuração e o ambiente.
+
+  # ----------------------------------------------------------
+  # PARÂMETROS
+  # ----------------------------------------------------------
+
+  parameters:
+
+    LocalId:
+      name: id
+      in: path
+      required: true
+      description: Identificador do local
+      schema:
+        type: string
+        format: uuid
+
+    MapaId:
+      name: mapaId
+      in: path
+      required: true
+      description: Identificador do mapa
+      schema:
+        type: string
+        format: uuid
+
+    SessaoId:
+      name: id
+      in: path
+      required: true
+      description: Identificador da sessão
+      schema:
+        type: string
+        format: uuid
+
+    BloqueioId:
+      name: id
+      in: path
+      required: true
+      description: Identificador do bloqueio
+      schema:
+        type: string
+        format: uuid
+
+    ReservaId:
+      name: id
+      in: path
+      required: true
+      description: Identificador da reserva
+      schema:
+        type: string
+        format: uuid
+
+    ChaveId:
+      name: id
+      in: path
+      required: true
+      description: Identificador da chave de API
+      schema:
+        type: string
+        format: uuid
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Identificador único da operação.
+
+        Repetir a requisição com a mesma chave
+        e os mesmos dados deve devolver o resultado
+        original, sem duplicar a operação.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 255
+      example: operacao-reserva-001
+
+  # ----------------------------------------------------------
+  # SCHEMAS
+  # ----------------------------------------------------------
+
+  schemas:
+
+    SituacaoSessao:
+      type: string
+      enum:
+        - AGENDADA
+        - VENDAS_ABERTAS
+        - ESGOTADA
+        - REALIZADA
+        - CANCELADA
+
+    EstadoAssento:
+      type: string
+      enum:
+        - LIVRE
+        - BLOQUEADO
+        - VENDIDO
+
+    SituacaoBloqueio:
+      type: string
+      enum:
+        - ATIVO
+        - CONFIRMADO
+        - EXPIRADO
+        - LIBERADO
+
+    AtributoAssento:
+      type: string
+      enum:
+        - PADRAO
+        - CADEIRANTE
+        - ACOMPANHANTE
+        - VISAO_OBSTRUIDA
+        - CAMAROTE
+
+    Local:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        endereco:
+          type: string
+          nullable: true
+        donoId:
+          type: string
+          format: uuid
+        criadoEm:
+          type: string
+          format: date-time
+
+    CriarLocal:
+      type: object
+      required:
+        - nome
+      additionalProperties: false
+      properties:
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 150
+        endereco:
+          type: string
+          minLength: 3
+          maxLength: 300
+          nullable: true
+
+    Assento:
+      type: object
+      required:
+        - fileira
+        - numero
+        - x
+        - y
+        - ordemNaFileira
+      properties:
+        id:
+          type: string
+          format: uuid
+        fileira:
+          type: string
+        numero:
+          type: integer
+          minimum: 1
+        x:
+          type: number
+        y:
+          type: number
+        atributo:
+          $ref: "#/components/schemas/AtributoAssento"
+        ordemNaFileira:
+          type: integer
+          minimum: 0
+        grupoContiguo:
+          type: integer
+          minimum: 1
+
+    Setor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        ordemExibicao:
+          type: integer
+        categoria:
+          type: string
+          nullable: true
+        assentos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Assento"
+
+    Mapa:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        localId:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        capacidadeTotal:
+          type: integer
+        setores:
+          type: array
+          items:
+            $ref: "#/components/schemas/Setor"
+
+    CriarMapa:
+      type: object
+      required:
+        - nome
+        - setores
+      properties:
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 150
+        setores:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - nome
+              - ordemExibicao
+              - assentos
+            properties:
+              nome:
+                type: string
+              ordemExibicao:
+                type: integer
+                minimum: 0
+              categoria:
+                type: string
+                nullable: true
+              assentos:
+                type: array
+                minItems: 1
+                items:
+                  $ref: "#/components/schemas/Assento"
+
+    FaixaPreco:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        setorId:
+          type: string
+          format: uuid
+        valor:
+          type: number
+          minimum: 0
+        meiaEntrada:
+          type: number
+          minimum: 0
+          nullable: true
+        vigenteDe:
+          type: string
+          format: date-time
+        vigenteAte:
+          type: string
+          format: date-time
+          nullable: true
+
+    Sessao:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        mapaId:
+          type: string
+          format: uuid
+        inicioEm:
+          type: string
+          format: date-time
+        situacao:
+          $ref: "#/components/schemas/SituacaoSessao"
+        prazoBloqueioSegundos:
+          type: integer
+        maxProrrogacoes:
+          type: integer
+        versao:
+          type: integer
+        mapa:
+          $ref: "#/components/schemas/Mapa"
+        faixas:
+          type: array
+          items:
+            $ref: "#/components/schemas/FaixaPreco"
+
+    CriarSessao:
+      type: object
+      required:
+        - mapaId
+        - inicioEm
+        - faixas
+      properties:
+        mapaId:
+          type: string
+          format: uuid
+        inicioEm:
+          type: string
+          format: date-time
+        situacao:
+          $ref: "#/components/schemas/SituacaoSessao"
+        prazoBloqueioSegundos:
+          type: integer
+          minimum: 1
+          default: 600
+        maxProrrogacoes:
+          type: integer
+          minimum: 0
+          default: 2
+        faixas:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - setorId
+              - valor
+            properties:
+              setorId:
+                type: string
+                format: uuid
+              valor:
+                type: number
+                minimum: 0
+              meiaEntrada:
+                type: number
+                minimum: 0
+                nullable: true
+              vigenteDe:
+                type: string
+                format: date-time
+              vigenteAte:
+                type: string
+                format: date-time
+
+    AtualizarSessao:
+      type: object
+      minProperties: 1
+      properties:
+        mapaId:
+          type: string
+          format: uuid
+        inicioEm:
+          type: string
+          format: date-time
+        situacao:
+          $ref: "#/components/schemas/SituacaoSessao"
+        prazoBloqueioSegundos:
+          type: integer
+          minimum: 1
+        maxProrrogacoes:
+          type: integer
+          minimum: 0
+
+    PaginacaoSessoes:
+      type: object
+      properties:
+        docs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Sessao"
+        totalDocs:
+          type: integer
+        limite:
+          type: integer
+        totalPages:
+          type: integer
+        pagina:
+          type: integer
+        hasPrevPage:
+          type: boolean
+        hasNextPage:
+          type: boolean
+        prevPage:
+          type: integer
+          nullable: true
+        nextPage:
+          type: integer
+          nullable: true
+
+    AssentoDisponivel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fileira:
+          type: string
+        numero:
+          type: integer
+        x:
+          type: number
+        y:
+          type: number
+        atributo:
+          $ref: "#/components/schemas/AtributoAssento"
+        ordemNaFileira:
+          type: integer
+        estado:
+          $ref: "#/components/schemas/EstadoAssento"
+
+    MapaDisponibilidade:
+      type: object
+      properties:
+        sessaoId:
+          type: string
+          format: uuid
+        situacao:
+          $ref: "#/components/schemas/SituacaoSessao"
+        mapaId:
+          type: string
+          format: uuid
+        setores:
+          type: array
+          items:
+            type: object
+            properties:
+              setorId:
+                type: string
+                format: uuid
+              nome:
+                type: string
+              preco:
+                type: number
+                nullable: true
+              assentos:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AssentoDisponivel"
+
+    CriarBloqueio:
+      oneOf:
+        - type: object
+          required:
+            - assentosIds
+          additionalProperties: false
+          properties:
+            assentosIds:
+              type: array
+              minItems: 1
+              maxItems: 20
+              uniqueItems: true
+              items:
+                type: string
+                format: uuid
+
+        - type: object
+          required:
+            - quantidade
+            - setorId
+          additionalProperties: false
+          properties:
+            quantidade:
+              type: integer
+              minimum: 1
+              maximum: 20
+            setorId:
+              type: string
+              format: uuid
+
+    Bloqueio:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sessaoId:
+          type: string
+          format: uuid
+        situacao:
+          $ref: "#/components/schemas/SituacaoBloqueio"
+        criadoEm:
+          type: string
+          format: date-time
+        expiraEm:
+          type: string
+          format: date-time
+        segundosRestantes:
+          type: integer
+          minimum: 0
+        prorrogacoes:
+          type: integer
+        maxProrrogacoes:
+          type: integer
+        assentos:
+          type: array
+          description: |
+            Na criação, a API retorna IDs de assentos.
+            Na consulta, retorna objetos com seus detalhes.
+          items:
+            oneOf:
+              - type: string
+                format: uuid
+              - type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  setorId:
+                    type: string
+                    format: uuid
+                  fileira:
+                    type: string
+                  numero:
+                    type: integer
+
+    ConfirmarReserva:
+      type: object
+      required:
+        - referenciaPagamento
+      additionalProperties: false
+      properties:
+        referenciaPagamento:
+          type: string
+          minLength: 1
+          maxLength: 255
+
+    Reserva:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bloqueioId:
+          type: string
+          format: uuid
+        sessaoId:
+          type: string
+          format: uuid
+        valorTotal:
+          type: number
+        referenciaPagamento:
+          type: string
+        confirmadaEm:
+          type: string
+          format: date-time
+        canceladaEm:
+          type: string
+          format: date-time
+          nullable: true
+        situacao:
+          type: string
+          enum:
+            - CONFIRMADA
+            - CANCELADA
+        assentos:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              setorId:
+                type: string
+                format: uuid
+              setor:
+                type: string
+              fileira:
+                type: string
+              numero:
+                type: integer
+
+    CriarChave:
+      type: object
+      required:
+        - nome
+      additionalProperties: false
+      properties:
+        nome:
+          type: string
+          minLength: 3
+          maxLength: 100
+        escopo:
+          type: string
+          enum:
+            - LEITURA
+            - LEITURA_ESCRITA
+          default: LEITURA
+
+    ChaveApi:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        prefixo:
+          type: string
+        escopo:
+          type: string
+          enum:
+            - LEITURA
+            - LEITURA_ESCRITA
+        ativa:
+          type: boolean
+        criadoEm:
+          type: string
+          format: date-time
+        ultimoUsoEm:
+          type: string
+          format: date-time
+          nullable: true
+        revogadaEm:
+          type: string
+          format: date-time
+          nullable: true
+
+    ChaveCriada:
+      allOf:
+        - $ref: "#/components/schemas/ChaveApi"
+        - type: object
+          required:
+            - chave
+          properties:
+            chave:
+              type: string
+              description: Segredo exibido somente na criação
+              example: "ws14_exemplo_de_chave"
+
+    Erro:
+      type: object
+      properties:
+        erro:
+          type: string
+        mensagem:
+          type: string
+
+    ErroConflitoAssentos:
+      allOf:
+        - $ref: "#/components/schemas/Erro"
+        - type: object
+          properties:
+            assentosEmConflito:
+              type: array
+              items:
+                type: string
+                format: uuid
+
+  # ----------------------------------------------------------
+  # RESPOSTAS DE ERRO
+  # ----------------------------------------------------------
+
+  responses:
+
+    NaoAutenticado:
+      description: Autenticação ausente ou inválida
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Erro"
+          example:
+            erro: NAO_AUTENTICADO
+            mensagem: Sessão inválida ou expirada.
+
+    AcessoNegado:
+      description: Usuário sem permissão
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Erro"
+          example:
+            erro: ACESSO_NEGADO
+            mensagem: Permissão insuficiente.
+
+    NaoEncontrado:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Erro"
+          example:
+            erro: REGISTRO_NAO_ENCONTRADO
+            mensagem: Recurso não encontrado.
+
+    DadosInvalidos:
+      description: Dados inválidos
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Erro"
+          example:
+            erro: DADOS_INVALIDOS
+            mensagem: Os dados informados são inválidos.
+
+    Conflito:
+      description: Conflito com o estado atual do recurso
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Erro"
+          example:
+            erro: CONFLITO_ASSENTOS
+            mensagem: Operação não permitida no estado atual.
+
+    BloqueioExpirado:
+      description: Bloqueio expirado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Erro"
+          example:
+            erro: BLOQUEIO_EXPIRADO
+            mensagem: O prazo do bloqueio terminou.
